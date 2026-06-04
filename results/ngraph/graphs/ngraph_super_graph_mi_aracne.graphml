@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+<!-- Created by igraph -->
+  <key id="v_name" for="node" attr.name="name" attr.type="string"/>
+  <key id="v_core" for="node" attr.name="core" attr.type="string"/>
+  <key id="v_method" for="node" attr.name="method" attr.type="string"/>
+  <key id="v_leiden_module" for="node" attr.name="leiden_module" attr.type="string"/>
+  <key id="e_method" for="edge" attr.name="method" attr.type="string"/>
+  <key id="e_weight" for="edge" attr.name="weight" attr.type="double"/>
+  <key id="e_edge_jaccard" for="edge" attr.name="edge_jaccard" attr.type="double"/>
+  <key id="e_spectral_similarity" for="edge" attr.name="spectral_similarity" attr.type="double"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="n0">
+      <data key="v_name">ST8</data>
+      <data key="v_core">ST8</data>
+      <data key="v_method">mi_aracne</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n1">
+      <data key="v_name">ST13</data>
+      <data key="v_core">ST13</data>
+      <data key="v_method">mi_aracne</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n2">
+      <data key="v_name">GeoB25202_R1</data>
+      <data key="v_core">GeoB25202_R1</data>
+      <data key="v_method">mi_aracne</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n3">
+      <data key="v_name">GeoB25202_R2</data>
+      <data key="v_core">GeoB25202_R2</data>
+      <data key="v_method">mi_aracne</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <edge source="n2" target="n3">
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.497364805443611</data>
+      <data key="e_edge_jaccard">0.0182495344506518</data>
+      <data key="e_spectral_similarity">0.976480076436569</data>
+    </edge>
+    <edge source="n1" target="n2">
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.465320482021474</data>
+      <data key="e_edge_jaccard">0.0152949745083758</data>
+      <data key="e_spectral_similarity">0.915345989534572</data>
+    </edge>
+    <edge source="n0" target="n2">
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.413594123605306</data>
+      <data key="e_edge_jaccard">0.0152771715408119</data>
+      <data key="e_spectral_similarity">0.811911075669801</data>
+    </edge>
+    <edge source="n1" target="n3">
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.456093639028867</data>
+      <data key="e_edge_jaccard">0.00644237652111668</data>
+      <data key="e_spectral_similarity">0.905744901536618</data>
+    </edge>
+    <edge source="n0" target="n3">
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.416544264832479</data>
+      <data key="e_edge_jaccard">0.0133678309616214</data>
+      <data key="e_spectral_similarity">0.819720698703337</data>
+    </edge>
+    <edge source="n0" target="n1">
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.39181985139231</data>
+      <data key="e_edge_jaccard">0.0173508252221752</data>
+      <data key="e_spectral_similarity">0.766288877562445</data>
+    </edge>
+  </graph>
+</graphml>

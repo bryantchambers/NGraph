@@ -1,0 +1,10 @@
+.MAT-GIT/
+results/
+*.RData
+*.rds
+*.rds.gz
+*.tsv.gz
+*.pdf
+*.png
+.here
+.vscode/

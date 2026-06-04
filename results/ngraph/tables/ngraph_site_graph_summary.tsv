@@ -1,0 +1,9 @@
+core	method	method_suffix	samples	nodes	edges	density	components	threshold	top_variable_taxa
+ST8	spearman_abs_threshold	spearman	115	500	3921	0.0314308617234469	167	0.55	500
+ST8	mi_aracne	mi_aracne	115	500	971	0.00778356713426854	1	0	500
+ST13	spearman_abs_threshold	spearman	48	500	2769	0.0221963927855711	144	0.55	500
+ST13	mi_aracne	mi_aracne	48	500	1433	0.0114869739478958	1	0	500
+GeoB25202_R1	spearman_abs_threshold	spearman	26	500	8087	0.0648256513026052	11	0.55	500
+GeoB25202_R1	mi_aracne	mi_aracne	26	500	1355	0.0108617234468938	1	0	500
+GeoB25202_R2	spearman_abs_threshold	spearman	25	500	7126	0.057122244488978	10	0.55	500
+GeoB25202_R2	mi_aracne	mi_aracne	25	500	1379	0.0110541082164329	1	0	500

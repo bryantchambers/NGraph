@@ -1,0 +1,12 @@
+[2026-06-04 14:08:17] Starting NGraph site graph construction 
+[2026-06-04 14:08:17] minet available: 3.68.0 
+[2026-06-04 14:08:27] Built ST8 Spearman graph: 500 nodes, 3921 edges 
+[2026-06-04 14:08:28] Built ST8 MI/ARACNE graph: 500 nodes, 971 edges 
+[2026-06-04 14:08:35] Built ST13 Spearman graph: 500 nodes, 2769 edges 
+[2026-06-04 14:08:36] Built ST13 MI/ARACNE graph: 500 nodes, 1433 edges 
+[2026-06-04 14:08:42] Built GeoB25202_R1 Spearman graph: 500 nodes, 8087 edges 
+[2026-06-04 14:08:42] Built GeoB25202_R1 MI/ARACNE graph: 500 nodes, 1355 edges 
+[2026-06-04 14:08:49] Built GeoB25202_R2 Spearman graph: 500 nodes, 7126 edges 
+[2026-06-04 14:08:49] Built GeoB25202_R2 MI/ARACNE graph: 500 nodes, 1379 edges 
+[2026-06-04 14:08:49] Method Validated: site graphs written 
+[2026-06-04 14:08:49] Complete 
