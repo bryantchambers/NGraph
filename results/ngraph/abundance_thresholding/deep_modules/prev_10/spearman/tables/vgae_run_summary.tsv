@@ -1,0 +1,2 @@
+threshold	method	validation_core	best_epoch	best_heldout_auc	module_k	module_silhouette
+prev_10	spearman	GeoB25202_R2	5	0.7465846854572147	2	0.6291518211364746

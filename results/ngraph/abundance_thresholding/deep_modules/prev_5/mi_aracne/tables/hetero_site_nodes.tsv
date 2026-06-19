@@ -1,0 +1,5 @@
+core	method_suffix	samples	nodes	edges	density	components	top_variable_taxa	graph_threshold	graph_method	samples_site	age_min_kyr	age_max_kyr	age_mean_kyr	total_tax_abund_tad	detected_taxa_tad	total_n_reads	total_n_reads_tad	threshold	method
+ST8	mi_aracne	115	274	849	0.0226999278094169	1	274	0	mi_aracne	115	1.5215	107.683	48.6460552267377	12049336	24.2260869565217	32473619	14269690	5	mi_aracne
+ST13	mi_aracne	48	274	1058	0.0282880136894735	1	274	0	mi_aracne	48	5.659	148.086	58.9366416666667	13416211	50.8333333333333	29893581	17250844	5	mi_aracne
+GeoB25202_R1	mi_aracne	26	274	17013	0.45488088553782	1	274	0	mi_aracne	26	0.692	147.206	69.92375	4185694	20.9615384615385	12512369	6240020	5	mi_aracne
+GeoB25202_R2	mi_aracne	25	274	16466	0.44025560813882	1	274	0	mi_aracne	25	0.692	147.206	70.39346	4247675	23.76	12457195	6173494	5	mi_aracne

@@ -1,0 +1,5 @@
+threshold	method	site	present_taxa	mean_assignment_entropy	mean_site_similarity
+prev_3	spearman	ST8	350	0.09246186167001724	0.6303960093756996
+prev_3	spearman	ST13	337	0.17459966242313385	0.4612580969320426
+prev_3	spearman	GeoB25202_R1	167	0.017616577446460724	0.6742341509388877
+prev_3	spearman	GeoB25202_R2	188	0.0	0.6686932424172746

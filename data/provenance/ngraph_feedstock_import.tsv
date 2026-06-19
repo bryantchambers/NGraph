@@ -1,0 +1,4 @@
+source	destination	bytes	required_columns	present	imported_at
+/src/Source/ROCS/results/microbial/damage/damage-classification-depositional/dmg-summary-ssp-damage-classification-depositional.tsv.gz	/src/data/raw/dmg-summary-ssp-damage-classification-depositional.tsv.gz	144783778	subspecies, label, domain, is_dmg, n_reads, n_reads_tad, tax_abund_tad, reference_length	TRUE	2026-06-12 17:25:52 CEST
+/src/Source/ROCS/data/metadata_v5.tsv	/src/data/metadata/metadata_v5.tsv	75030	label, core, y_bp, mis	TRUE	2026-06-12 17:25:52 CEST
+/src/Source/ROCS/results/common/wgcna/classification/prokaryote_function_assigned.tsv	/src/data/reference/prokaryote_function_assigned.tsv	1073068	taxon	TRUE	2026-06-12 17:25:52 CEST

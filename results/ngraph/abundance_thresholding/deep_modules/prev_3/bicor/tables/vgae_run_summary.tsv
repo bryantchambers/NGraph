@@ -1,0 +1,2 @@
+threshold	method	validation_core	best_epoch	best_heldout_auc	module_k	module_silhouette
+prev_3	bicor	GeoB25202_R2	1	0.5014013596365751	4	0.5592696666717529

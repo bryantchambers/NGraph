@@ -1,0 +1,13 @@
+{
+  "branch": "abundance_thresholding",
+  "card_count": 2816,
+  "card_index": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/indexes/card_index.tsv",
+  "card_tfidf_matrix": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/indexes/card_tfidf_matrix.npz",
+  "card_tfidf_vectorizer": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/indexes/card_tfidf_vectorizer.pkl",
+  "embedding_count": 278,
+  "seed": 42,
+  "source_cards": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/cards/evidence_cards.tsv",
+  "source_embeddings": "/src/results/ngraph/abundance_thresholding/deep_modules/prev_5/pearson/tables/vgae_embeddings.tsv",
+  "vgae_embedding_index": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/indexes/vgae_embedding_index.tsv",
+  "vgae_nearest_neighbors": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/indexes/vgae_nearest_neighbors.pkl"
+}

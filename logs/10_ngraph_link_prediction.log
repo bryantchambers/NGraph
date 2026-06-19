@@ -1,0 +1,29 @@
+[2026-06-19 11:35:01] Starting link prediction
+[2026-06-19 11:35:01] Seed: 42
+[2026-06-19 11:35:01] Package versions: numpy 2.4.6, pandas 2.3.3, sklearn 1.9.0
+[2026-06-19 11:35:02] prev_10/bicor taxon-taxon: 1762 candidate pairs, holdout AUC 0.913
+[2026-06-19 11:35:02] prev_10/bicor taxon-site: 80 candidate pairs, holdout AUC 0.999
+[2026-06-19 11:35:03] prev_10/mi_aracne taxon-taxon: 9097 candidate pairs, holdout AUC 0.821
+[2026-06-19 11:35:03] prev_10/mi_aracne taxon-site: 80 candidate pairs, holdout AUC 0.997
+[2026-06-19 11:35:04] prev_10/pearson taxon-taxon: 9711 candidate pairs, holdout AUC 0.701
+[2026-06-19 11:35:04] prev_10/pearson taxon-site: 80 candidate pairs, holdout AUC 0.997
+[2026-06-19 11:35:04] prev_10/spearman taxon-taxon: 5957 candidate pairs, holdout AUC 0.915
+[2026-06-19 11:35:04] prev_10/spearman taxon-site: 80 candidate pairs, holdout AUC 0.996
+[2026-06-19 11:35:06] prev_3/bicor taxon-taxon: 3498 candidate pairs, holdout AUC 0.945
+[2026-06-19 11:35:06] prev_3/bicor taxon-site: 454 candidate pairs, holdout AUC 0.967
+[2026-06-19 11:35:08] prev_3/mi_aracne taxon-taxon: 23827 candidate pairs, holdout AUC 0.936
+[2026-06-19 11:35:09] prev_3/mi_aracne taxon-site: 454 candidate pairs, holdout AUC 0.971
+[2026-06-19 11:35:10] prev_3/pearson taxon-taxon: 31555 candidate pairs, holdout AUC 0.912
+[2026-06-19 11:35:11] prev_3/pearson taxon-site: 454 candidate pairs, holdout AUC 0.983
+[2026-06-19 11:35:13] prev_3/spearman taxon-taxon: 12179 candidate pairs, holdout AUC 0.943
+[2026-06-19 11:35:13] prev_3/spearman taxon-site: 454 candidate pairs, holdout AUC 0.966
+[2026-06-19 11:35:14] prev_5/bicor taxon-taxon: 2933 candidate pairs, holdout AUC 0.979
+[2026-06-19 11:35:14] prev_5/bicor taxon-site: 245 candidate pairs, holdout AUC 0.978
+[2026-06-19 11:35:15] prev_5/mi_aracne taxon-taxon: 16948 candidate pairs, holdout AUC 0.923
+[2026-06-19 11:35:15] prev_5/mi_aracne taxon-site: 245 candidate pairs, holdout AUC 0.982
+[2026-06-19 11:35:17] prev_5/pearson taxon-taxon: 20563 candidate pairs, holdout AUC 0.857
+[2026-06-19 11:35:17] prev_5/pearson taxon-site: 245 candidate pairs, holdout AUC 0.990
+[2026-06-19 11:35:18] prev_5/spearman taxon-taxon: 9142 candidate pairs, holdout AUC 0.907
+[2026-06-19 11:35:18] prev_5/spearman taxon-site: 245 candidate pairs, holdout AUC 0.973
+[2026-06-19 11:35:18] Link prediction complete
+[2026-06-19 11:35:18] Report written: /src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/reports/NGRAPH_LINK_PREDICTION_REPORT.md

@@ -1,0 +1,5 @@
+[2026-06-19 14:24:49] Starting query engine
+[2026-06-19 14:24:49] Seed: 42
+[2026-06-19 14:24:49] Package versions: numpy 2.4.6, pandas 2.3.3, scipy 1.17.1, sklearn 1.9.0
+[2026-06-19 14:24:49] Query engine complete
+[2026-06-19 14:24:49] Report written: /src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/reports/NGRAPH_QUERY_REPORT.md

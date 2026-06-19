@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+<!-- Created by igraph -->
+  <key id="v_name" for="node" attr.name="name" attr.type="string"/>
+  <key id="v_core" for="node" attr.name="core" attr.type="string"/>
+  <key id="v_method" for="node" attr.name="method" attr.type="string"/>
+  <key id="v_threshold" for="node" attr.name="threshold" attr.type="double"/>
+  <key id="v_leiden_module" for="node" attr.name="leiden_module" attr.type="string"/>
+  <key id="e_threshold" for="edge" attr.name="threshold" attr.type="double"/>
+  <key id="e_method" for="edge" attr.name="method" attr.type="string"/>
+  <key id="e_weight" for="edge" attr.name="weight" attr.type="double"/>
+  <key id="e_edge_jaccard" for="edge" attr.name="edge_jaccard" attr.type="double"/>
+  <key id="e_spectral_similarity" for="edge" attr.name="spectral_similarity" attr.type="double"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="n0">
+      <data key="v_name">ST8</data>
+      <data key="v_core">ST8</data>
+      <data key="v_method">spearman</data>
+      <data key="v_threshold">5</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n1">
+      <data key="v_name">ST13</data>
+      <data key="v_core">ST13</data>
+      <data key="v_method">spearman</data>
+      <data key="v_threshold">5</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n2">
+      <data key="v_name">GeoB25202_R1</data>
+      <data key="v_core">GeoB25202_R1</data>
+      <data key="v_method">spearman</data>
+      <data key="v_threshold">5</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n3">
+      <data key="v_name">GeoB25202_R2</data>
+      <data key="v_core">GeoB25202_R2</data>
+      <data key="v_method">spearman</data>
+      <data key="v_threshold">5</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <edge source="n2" target="n3">
+      <data key="e_threshold">5</data>
+      <data key="e_method">spearman</data>
+      <data key="e_weight">0.852049104226565</data>
+      <data key="e_edge_jaccard">0.836137096140241</data>
+      <data key="e_spectral_similarity">0.86796111231289</data>
+    </edge>
+    <edge source="n1" target="n2">
+      <data key="e_threshold">5</data>
+      <data key="e_method">spearman</data>
+      <data key="e_weight">0.362256395385022</data>
+      <data key="e_edge_jaccard">0.31693855022691</data>
+      <data key="e_spectral_similarity">0.407574240543135</data>
+    </edge>
+    <edge source="n0" target="n2">
+      <data key="e_threshold">5</data>
+      <data key="e_method">spearman</data>
+      <data key="e_weight">0.628579101218713</data>
+      <data key="e_edge_jaccard">0.630828630828631</data>
+      <data key="e_spectral_similarity">0.626329571608795</data>
+    </edge>
+    <edge source="n1" target="n3">
+      <data key="e_threshold">5</data>
+      <data key="e_method">spearman</data>
+      <data key="e_weight">0.356794223500731</data>
+      <data key="e_edge_jaccard">0.315709201830198</data>
+      <data key="e_spectral_similarity">0.397879245171264</data>
+    </edge>
+    <edge source="n0" target="n3">
+      <data key="e_threshold">5</data>
+      <data key="e_method">spearman</data>
+      <data key="e_weight">0.590602749134098</data>
+      <data key="e_edge_jaccard">0.588361988933863</data>
+      <data key="e_spectral_similarity">0.592843509334333</data>
+    </edge>
+    <edge source="n0" target="n1">
+      <data key="e_threshold">5</data>
+      <data key="e_method">spearman</data>
+      <data key="e_weight">0.395646237468689</data>
+      <data key="e_edge_jaccard">0.349291203283853</data>
+      <data key="e_spectral_similarity">0.442001271653526</data>
+    </edge>
+  </graph>
+</graphml>

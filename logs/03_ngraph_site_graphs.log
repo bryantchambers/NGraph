@@ -1,12 +1,52 @@
-[2026-06-04 14:08:17] Starting NGraph site graph construction 
-[2026-06-04 14:08:17] minet available: 3.68.0 
-[2026-06-04 14:08:27] Built ST8 Spearman graph: 500 nodes, 3921 edges 
-[2026-06-04 14:08:28] Built ST8 MI/ARACNE graph: 500 nodes, 971 edges 
-[2026-06-04 14:08:35] Built ST13 Spearman graph: 500 nodes, 2769 edges 
-[2026-06-04 14:08:36] Built ST13 MI/ARACNE graph: 500 nodes, 1433 edges 
-[2026-06-04 14:08:42] Built GeoB25202_R1 Spearman graph: 500 nodes, 8087 edges 
-[2026-06-04 14:08:42] Built GeoB25202_R1 MI/ARACNE graph: 500 nodes, 1355 edges 
-[2026-06-04 14:08:49] Built GeoB25202_R2 Spearman graph: 500 nodes, 7126 edges 
-[2026-06-04 14:08:49] Built GeoB25202_R2 MI/ARACNE graph: 500 nodes, 1379 edges 
-[2026-06-04 14:08:49] Method Validated: site graphs written 
-[2026-06-04 14:08:49] Complete 
+[2026-06-15 10:04:27] Starting NGraph site graph construction 
+[2026-06-15 10:04:29] minet available: 3.68.0 
+[2026-06-15 10:04:30] Threshold 3 built ST8 PEARSON graph: 374 nodes, 4318 edges 
+[2026-06-15 10:04:31] Threshold 3 built ST8 BICOR graph: 374 nodes, 63693 edges 
+[2026-06-15 10:04:36] Threshold 3 built ST8 SPEARMAN graph: 374 nodes, 45262 edges 
+[2026-06-15 10:04:36] Threshold 3 built ST8 MI/ARACNE graph: 374 nodes, 2912 edges 
+[2026-06-15 10:04:37] Threshold 3 built ST13 PEARSON graph: 374 nodes, 6043 edges 
+[2026-06-15 10:04:37] Threshold 3 built ST13 BICOR graph: 374 nodes, 50311 edges 
+[2026-06-15 10:04:41] Threshold 3 built ST13 SPEARMAN graph: 374 nodes, 24603 edges 
+[2026-06-15 10:04:41] Threshold 3 built ST13 MI/ARACNE graph: 374 nodes, 3832 edges 
+[2026-06-15 10:04:42] Threshold 3 built GeoB25202_R1 PEARSON graph: 374 nodes, 27065 edges 
+[2026-06-15 10:04:43] Threshold 3 built GeoB25202_R1 BICOR graph: 374 nodes, 62164 edges 
+[2026-06-15 10:04:46] Threshold 3 built GeoB25202_R1 SPEARMAN graph: 374 nodes, 51086 edges 
+[2026-06-15 10:04:47] Threshold 3 built GeoB25202_R1 MI/ARACNE graph: 374 nodes, 40193 edges 
+[2026-06-15 10:04:47] Threshold 3 built GeoB25202_R2 PEARSON graph: 374 nodes, 23203 edges 
+[2026-06-15 10:04:48] Threshold 3 built GeoB25202_R2 BICOR graph: 374 nodes, 61012 edges 
+[2026-06-15 10:04:52] Threshold 3 built GeoB25202_R2 SPEARMAN graph: 374 nodes, 49674 edges 
+[2026-06-15 10:04:52] Threshold 3 built GeoB25202_R2 MI/ARACNE graph: 374 nodes, 39264 edges 
+[2026-06-15 10:04:53] Threshold 5 built ST8 PEARSON graph: 274 nodes, 1757 edges 
+[2026-06-15 10:04:53] Threshold 5 built ST8 BICOR graph: 274 nodes, 33094 edges 
+[2026-06-15 10:04:56] Threshold 5 built ST8 SPEARMAN graph: 274 nodes, 19993 edges 
+[2026-06-15 10:04:56] Threshold 5 built ST8 MI/ARACNE graph: 274 nodes, 849 edges 
+[2026-06-15 10:04:56] Threshold 5 built ST13 PEARSON graph: 274 nodes, 2623 edges 
+[2026-06-15 10:04:57] Threshold 5 built ST13 BICOR graph: 274 nodes, 21293 edges 
+[2026-06-15 10:04:58] Threshold 5 built ST13 SPEARMAN graph: 274 nodes, 8276 edges 
+[2026-06-15 10:04:59] Threshold 5 built ST13 MI/ARACNE graph: 274 nodes, 1058 edges 
+[2026-06-15 10:04:59] Threshold 5 built GeoB25202_R1 PEARSON graph: 274 nodes, 10974 edges 
+[2026-06-15 10:04:59] Threshold 5 built GeoB25202_R1 BICOR graph: 274 nodes, 31679 edges 
+[2026-06-15 10:05:01] Threshold 5 built GeoB25202_R1 SPEARMAN graph: 274 nodes, 23935 edges 
+[2026-06-15 10:05:01] Threshold 5 built GeoB25202_R1 MI/ARACNE graph: 274 nodes, 17013 edges 
+[2026-06-15 10:05:01] Threshold 5 built GeoB25202_R2 PEARSON graph: 274 nodes, 9720 edges 
+[2026-06-15 10:05:02] Threshold 5 built GeoB25202_R2 BICOR graph: 274 nodes, 30417 edges 
+[2026-06-15 10:05:04] Threshold 5 built GeoB25202_R2 SPEARMAN graph: 274 nodes, 22780 edges 
+[2026-06-15 10:05:04] Threshold 5 built GeoB25202_R2 MI/ARACNE graph: 274 nodes, 16466 edges 
+[2026-06-15 10:05:04] Threshold 10 built ST8 PEARSON graph: 173 nodes, 749 edges 
+[2026-06-15 10:05:04] Threshold 10 built ST8 BICOR graph: 173 nodes, 12179 edges 
+[2026-06-15 10:05:06] Threshold 10 built ST8 SPEARMAN graph: 173 nodes, 5171 edges 
+[2026-06-15 10:05:06] Threshold 10 built ST8 MI/ARACNE graph: 173 nodes, 272 edges 
+[2026-06-15 10:05:06] Threshold 10 built ST13 PEARSON graph: 173 nodes, 617 edges 
+[2026-06-15 10:05:06] Threshold 10 built ST13 BICOR graph: 173 nodes, 1578 edges 
+[2026-06-15 10:05:07] Threshold 10 built ST13 SPEARMAN graph: 173 nodes, 1242 edges 
+[2026-06-15 10:05:07] Threshold 10 built ST13 MI/ARACNE graph: 173 nodes, 327 edges 
+[2026-06-15 10:05:08] Threshold 10 built GeoB25202_R1 PEARSON graph: 173 nodes, 2511 edges 
+[2026-06-15 10:05:08] Threshold 10 built GeoB25202_R1 BICOR graph: 173 nodes, 11406 edges 
+[2026-06-15 10:05:08] Threshold 10 built GeoB25202_R1 SPEARMAN graph: 173 nodes, 6763 edges 
+[2026-06-15 10:05:09] Threshold 10 built GeoB25202_R1 MI/ARACNE graph: 173 nodes, 4017 edges 
+[2026-06-15 10:05:09] Threshold 10 built GeoB25202_R2 PEARSON graph: 173 nodes, 3267 edges 
+[2026-06-15 10:05:09] Threshold 10 built GeoB25202_R2 BICOR graph: 173 nodes, 10930 edges 
+[2026-06-15 10:05:10] Threshold 10 built GeoB25202_R2 SPEARMAN graph: 173 nodes, 6326 edges 
+[2026-06-15 10:05:10] Threshold 10 built GeoB25202_R2 MI/ARACNE graph: 173 nodes, 4381 edges 
+[2026-06-15 10:05:10] Method Validated: threshold-specific site graphs written 
+[2026-06-15 10:05:10] Complete 

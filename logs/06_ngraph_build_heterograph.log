@@ -1,0 +1,16 @@
+[2026-06-15 16:51:47] Starting NGraph heterograph export 
+[2026-06-15 16:51:47] Package versions: data.table 1.17.8, igraph 2.3.2, ggplot2 4.0.3, jsonlite 2.0.0 
+[2026-06-15 16:51:49] Exported heterograph tables for prev_3/pearson: taxon nodes=374, site nodes=4, taxon-taxon edges=60629, site-site edges=6, taxon-site edges=1042 
+[2026-06-15 16:51:51] Exported heterograph tables for prev_3/bicor: taxon nodes=374, site nodes=4, taxon-taxon edges=237180, site-site edges=6, taxon-site edges=1042 
+[2026-06-15 16:51:52] Exported heterograph tables for prev_3/spearman: taxon nodes=374, site nodes=4, taxon-taxon edges=170625, site-site edges=6, taxon-site edges=1042 
+[2026-06-15 16:51:52] Exported heterograph tables for prev_3/mi_aracne: taxon nodes=374, site nodes=4, taxon-taxon edges=86201, site-site edges=6, taxon-site edges=1042 
+[2026-06-15 16:51:53] Exported heterograph tables for prev_5/pearson: taxon nodes=274, site nodes=4, taxon-taxon edges=25074, site-site edges=6, taxon-site edges=851 
+[2026-06-15 16:51:54] Exported heterograph tables for prev_5/bicor: taxon nodes=274, site nodes=4, taxon-taxon edges=116483, site-site edges=6, taxon-site edges=851 
+[2026-06-15 16:51:55] Exported heterograph tables for prev_5/spearman: taxon nodes=274, site nodes=4, taxon-taxon edges=74984, site-site edges=6, taxon-site edges=851 
+[2026-06-15 16:51:55] Exported heterograph tables for prev_5/mi_aracne: taxon nodes=274, site nodes=4, taxon-taxon edges=35386, site-site edges=6, taxon-site edges=851 
+[2026-06-15 16:51:56] Exported heterograph tables for prev_10/pearson: taxon nodes=173, site nodes=4, taxon-taxon edges=7144, site-site edges=6, taxon-site edges=612 
+[2026-06-15 16:51:56] Exported heterograph tables for prev_10/bicor: taxon nodes=173, site nodes=4, taxon-taxon edges=36093, site-site edges=6, taxon-site edges=612 
+[2026-06-15 16:51:57] Exported heterograph tables for prev_10/spearman: taxon nodes=173, site nodes=4, taxon-taxon edges=19502, site-site edges=6, taxon-site edges=612 
+[2026-06-15 16:51:57] Exported heterograph tables for prev_10/mi_aracne: taxon nodes=173, site nodes=4, taxon-taxon edges=8997, site-site edges=6, taxon-site edges=612 
+[2026-06-15 16:51:57] Method Validated: heterograph export tables written 
+[2026-06-15 16:51:57] Complete 

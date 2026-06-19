@@ -1,0 +1,29 @@
+{
+  "generated": "2026-06-15 16:51:48 CEST",
+  "branch": "abundance_thresholding",
+  "threshold": 3,
+  "method": "pearson",
+  "seed": 42,
+  "source_files": {
+    "clr": "/src/results/ngraph/abundance_thresholding/prev_3/matrices/ngraph_clr_global.rds",
+    "abundance": "/src/results/ngraph/abundance_thresholding/prev_3/matrices/ngraph_tax_abund_tad_taxa_by_sample.rds",
+    "sample_qc": "/src/results/ngraph/abundance_thresholding/prev_3/tables/ngraph_sample_qc.tsv",
+    "taxa_metadata": "/src/results/ngraph/abundance_thresholding/prev_3/tables/ngraph_taxa_metadata.tsv",
+    "site_summary": "/src/results/ngraph/abundance_thresholding/prev_3/tables/ngraph_site_graph_summary.tsv",
+    "super_graph_edges": "/src/results/ngraph/abundance_thresholding/prev_3/tables/ngraph_super_graph_edges_pearson.tsv"
+  },
+  "nodes": {
+    "taxon": 374,
+    "site": 4
+  },
+  "edges": {
+    "taxon_taxon": 60629,
+    "site_site": 6,
+    "taxon_site": 1042
+  },
+  "feature_columns": {
+    "taxon_numeric": ["n_samples", "n_cores", "total_reads", "pct_damaged", "confidence_score", "group_completeness", "mean_clr", "sd_clr", "mean_abs_clr", "max_abs_clr", "mean_abundance", "prevalence_samples", "prevalence_cores"],
+    "site_numeric": ["samples", "nodes", "edges", "density", "components", "top_variable_taxa", "graph_threshold", "samples_site", "age_min_kyr", "age_max_kyr", "age_mean_kyr", "total_tax_abund_tad", "detected_taxa_tad", "total_n_reads", "total_n_reads_tad"]
+  },
+  "direct_relations": ["taxon_taxon", "site_similarity", "taxon_site_context"]
+}

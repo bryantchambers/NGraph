@@ -1,0 +1,10 @@
+{
+  "branch": "abundance_thresholding",
+  "questions": [
+    "What taxa work together to transition from glacial to interglacial periods?"
+  ],
+  "report": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/reports/NGRAPH_QUERY_REPORT.md",
+  "results_jsonl": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/query_results.jsonl",
+  "results_tsv": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/query_results.tsv",
+  "seed": 42
+}

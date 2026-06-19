@@ -1,0 +1,2 @@
+threshold	method	validation_core	best_epoch	best_heldout_auc	module_k	module_silhouette
+prev_5	pearson	GeoB25202_R2	1	0.6719067585818558	2	0.6194827556610107

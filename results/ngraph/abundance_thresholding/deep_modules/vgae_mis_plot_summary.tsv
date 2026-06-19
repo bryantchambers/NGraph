@@ -1,0 +1,13 @@
+threshold	method	taxa_plotted	mis_min	mis_midpoint	mis_max	plot_file
+prev_10	bicor	173	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_10/bicor/figures/vgae_taxon_embedding_mis_pca.png
+prev_10	mi_aracne	173	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_10/mi_aracne/figures/vgae_taxon_embedding_mis_pca.png
+prev_10	pearson	173	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_10/pearson/figures/vgae_taxon_embedding_mis_pca.png
+prev_10	spearman	173	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_10/spearman/figures/vgae_taxon_embedding_mis_pca.png
+prev_3	bicor	374	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_3/bicor/figures/vgae_taxon_embedding_mis_pca.png
+prev_3	mi_aracne	374	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_3/mi_aracne/figures/vgae_taxon_embedding_mis_pca.png
+prev_3	pearson	374	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_3/pearson/figures/vgae_taxon_embedding_mis_pca.png
+prev_3	spearman	374	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_3/spearman/figures/vgae_taxon_embedding_mis_pca.png
+prev_5	bicor	274	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_5/bicor/figures/vgae_taxon_embedding_mis_pca.png
+prev_5	mi_aracne	274	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_5/mi_aracne/figures/vgae_taxon_embedding_mis_pca.png
+prev_5	pearson	274	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_5/pearson/figures/vgae_taxon_embedding_mis_pca.png
+prev_5	spearman	274	3.120315	4.0	5.01748	/src/results/ngraph/abundance_thresholding/deep_modules/prev_5/spearman/figures/vgae_taxon_embedding_mis_pca.png

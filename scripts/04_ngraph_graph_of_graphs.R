@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# 04_ngraph_graph_of_graphs.R -- compare site graphs and build a super-graph.
+# 04_ngraph_graph_of_graphs.R -- compare site graphs and build threshold-specific super-graphs.
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -35,120 +35,114 @@ laplacian_signature <- function(g, k) {
   as.numeric(quantile(ev, probs = seq(0, 1, length.out = k), na.rm = TRUE, names = FALSE, type = 7))
 }
 
-site_summary <- fread(file.path(NG$tables, "ngraph_site_graph_summary.tsv"))
-methods <- unique(site_summary$method_suffix)
-
 all_sim <- list()
-for (method_suffix in methods) {
-  graph_files <- file.path(NG$graphs, paste0("ngraph_", NG_PARAMS$all_cores, "_", method_suffix, ".rds"))
-  names(graph_files) <- NG_PARAMS$all_cores
-  graph_files <- graph_files[file.exists(graph_files)]
-  if (length(graph_files) < 2) {
-    ng_log(LOG, "Skipping graph-of-graphs for ", method_suffix, ": fewer than two site graphs")
-    next
-  }
+for (thr in NG_PARAMS$prevalence_thresholds) {
+  dirs <- ng_threshold_dirs(thr)
+  site_summary <- fread(file.path(dirs$tables, "ngraph_site_graph_summary.tsv"))
+  methods <- unique(site_summary$method_suffix)
 
-  graphs <- lapply(graph_files, readRDS)
-  edge_sets <- lapply(names(graph_files), function(core_id) {
-    fread(file.path(NG$graphs, paste0("ngraph_edges_", core_id, "_", method_suffix, ".tsv")))
-  })
-  names(edge_sets) <- names(graph_files)
-  edge_sets <- lapply(edge_sets, edge_key)
+  sim_by_threshold <- list()
+  for (method_suffix in methods) {
+    graph_files <- file.path(dirs$graphs, paste0("ngraph_", NG_PARAMS$all_cores, "_", method_suffix, ".rds"))
+    names(graph_files) <- NG_PARAMS$all_cores
+    graph_files <- graph_files[file.exists(graph_files)]
+    if (length(graph_files) < 2) {
+      ng_log(LOG, "Threshold ", thr, " skipping graph-of-graphs for ", method_suffix, ": fewer than two site graphs")
+      next
+    }
 
-  signatures <- lapply(graphs, laplacian_signature, k = NG_PARAMS$spectral_k)
-  pairs <- CJ(core_a = names(graphs), core_b = names(graphs))[core_a < core_b]
-  sim <- rbindlist(lapply(seq_len(nrow(pairs)), function(i) {
-    a <- pairs$core_a[i]
-    b <- pairs$core_b[i]
-    inter <- length(intersect(edge_sets[[a]], edge_sets[[b]]))
-    uni <- length(union(edge_sets[[a]], edge_sets[[b]]))
-    jaccard <- ifelse(uni == 0, NA_real_, inter / uni)
-    spectral_distance <- sqrt(sum((signatures[[a]] - signatures[[b]])^2))
-    data.table(
+    graphs <- lapply(graph_files, readRDS)
+    edge_sets <- lapply(names(graph_files), function(core_id) {
+      fread(file.path(dirs$graphs, paste0("ngraph_edges_", core_id, "_", method_suffix, ".tsv")))
+    })
+    names(edge_sets) <- names(graph_files)
+    edge_sets <- lapply(edge_sets, edge_key)
+
+    signatures <- lapply(graphs, laplacian_signature, k = NG_PARAMS$spectral_k)
+    pairs <- CJ(core_a = names(graphs), core_b = names(graphs))[core_a < core_b]
+    sim <- rbindlist(lapply(seq_len(nrow(pairs)), function(i) {
+      a <- pairs$core_a[i]
+      b <- pairs$core_b[i]
+      inter <- length(intersect(edge_sets[[a]], edge_sets[[b]]))
+      uni <- length(union(edge_sets[[a]], edge_sets[[b]]))
+      jaccard <- ifelse(uni == 0, NA_real_, inter / uni)
+      spectral_distance <- sqrt(sum((signatures[[a]] - signatures[[b]])^2))
+      data.table(
+        threshold = thr,
+        method = method_suffix,
+        core_a = a,
+        core_b = b,
+        edge_intersection = inter,
+        edge_union = uni,
+        edge_jaccard = jaccard,
+        spectral_distance = spectral_distance,
+        spectral_similarity = 1 / (1 + spectral_distance)
+      )
+    }))
+    sim[, super_weight := rowMeans(cbind(edge_jaccard, spectral_similarity), na.rm = TRUE)]
+    sim_by_threshold[[length(sim_by_threshold) + 1]] <- sim
+
+    super_edges <- data.table(
+      threshold = thr,
+      from = sim$core_a,
+      to = sim$core_b,
       method = method_suffix,
-      core_a = a,
-      core_b = b,
-      edge_intersection = inter,
-      edge_union = uni,
-      edge_jaccard = jaccard,
-      spectral_distance = spectral_distance,
-      spectral_similarity = 1 / (1 + spectral_distance)
+      weight = sim$super_weight,
+      edge_jaccard = sim$edge_jaccard,
+      spectral_similarity = sim$spectral_similarity
     )
-  }))
+    super_edge_cols <- c("from", "to", setdiff(names(super_edges), c("from", "to")))
+    super_edges <- super_edges[, ..super_edge_cols]
+    super_nodes <- data.table(name = names(graphs), core = names(graphs), method = method_suffix, threshold = thr)
+    super_g <- graph_from_data_frame(super_edges, directed = FALSE, vertices = super_nodes)
+    E(super_g)$weight <- super_edges$weight
+    E(super_g)$edge_jaccard <- super_edges$edge_jaccard
+    E(super_g)$spectral_similarity <- super_edges$spectral_similarity
 
-  sim[, super_weight := rowMeans(cbind(edge_jaccard, spectral_similarity), na.rm = TRUE)]
-  all_sim[[length(all_sim) + 1]] <- sim
+    if ("cluster_leiden" %in% getNamespaceExports("igraph") && ecount(super_g) > 0) {
+      cl <- cluster_leiden(super_g, objective_function = "modularity", weights = E(super_g)$weight)
+      V(super_g)$leiden_module <- paste0("S", membership(cl))
+    } else {
+      V(super_g)$leiden_module <- "S1"
+    }
 
-  super_edges <- data.table(
-    from = sim$core_a,
-    to = sim$core_b,
-    method = method_suffix,
-    weight = sim$super_weight,
-    edge_jaccard = sim$edge_jaccard,
-    spectral_similarity = sim$spectral_similarity
-  )
-  super_nodes <- data.table(name = names(graphs), core = names(graphs), method = method_suffix)
-  super_g <- graph_from_data_frame(super_edges, directed = FALSE, vertices = super_nodes)
-  E(super_g)$weight <- super_edges$weight
-  E(super_g)$edge_jaccard <- super_edges$edge_jaccard
-  E(super_g)$spectral_similarity <- super_edges$spectral_similarity
+    write_graph(super_g, file.path(dirs$graphs, paste0("ngraph_super_graph_", method_suffix, ".graphml")), format = "graphml")
+    saveRDS(super_g, file.path(dirs$graphs, paste0("ngraph_super_graph_", method_suffix, ".rds")))
+    fwrite(as.data.table(vertex_attr(super_g)), file.path(dirs$tables, paste0("ngraph_super_graph_nodes_", method_suffix, ".tsv")), sep = "\t")
+    fwrite(super_edges, file.path(dirs$tables, paste0("ngraph_super_graph_edges_", method_suffix, ".tsv")), sep = "\t")
 
-  if ("cluster_leiden" %in% getNamespaceExports("igraph") && ecount(super_g) > 0) {
-    cl <- cluster_leiden(super_g, objective_function = "modularity", weights = E(super_g)$weight)
-    V(super_g)$leiden_module <- paste0("S", membership(cl))
-  } else {
-    V(super_g)$leiden_module <- "S1"
+    layout_dt <- as.data.table(layout_with_fr(super_g, weights = E(super_g)$weight))
+    setnames(layout_dt, c("x", "y"))
+    layout_dt[, core := V(super_g)$name]
+    node_dt <- merge(layout_dt, as.data.table(vertex_attr(super_g)), by.x = "core", by.y = "name", all.x = TRUE)
+    edge_plot <- merge(super_edges, layout_dt, by.x = "from", by.y = "core")
+    edge_plot <- merge(edge_plot, layout_dt, by.x = "to", by.y = "core", suffixes = c("_from", "_to"))
+
+    p <- ggplot() +
+      geom_segment(data = edge_plot, aes(x = x_from, y = y_from, xend = x_to, yend = y_to, linewidth = weight), alpha = 0.65, color = "#355c7d") +
+      geom_point(data = node_dt, aes(x, y, fill = leiden_module), shape = 21, size = 9, color = "black") +
+      geom_text(data = node_dt, aes(x, y, label = core), size = 3.4) +
+      scale_linewidth(range = c(0.4, 2.8)) +
+      labs(title = paste("NGraph graph-of-graphs:", method_suffix, "prevalence", thr), linewidth = "Similarity", fill = "Leiden") +
+      theme_void(base_size = 11)
+    ggsave(file.path(dirs$figures, paste0("ngraph_super_graph_", method_suffix, ".png")), p, width = 7, height = 5.2, dpi = 180)
   }
 
-  write_graph(super_g, file.path(NG$graphs, paste0("ngraph_super_graph_", method_suffix, ".graphml")), format = "graphml")
-  saveRDS(super_g, file.path(NG$graphs, paste0("ngraph_super_graph_", method_suffix, ".rds")))
-  fwrite(as.data.table(vertex_attr(super_g)), file.path(NG$tables, paste0("ngraph_super_graph_nodes_", method_suffix, ".tsv")), sep = "\t")
-  fwrite(super_edges, file.path(NG$tables, paste0("ngraph_super_graph_edges_", method_suffix, ".tsv")), sep = "\t")
+  sim_dt <- rbindlist(sim_by_threshold, fill = TRUE)
+  fwrite(sim_dt, file.path(dirs$tables, "ngraph_graph_similarity.tsv"), sep = "\t")
+  all_sim[[length(all_sim) + 1]] <- sim_dt
 
-  if (method_suffix == "spearman") {
-    write_graph(super_g, file.path(NG$graphs, "ngraph_super_graph.graphml"), format = "graphml")
-    saveRDS(super_g, file.path(NG$graphs, "ngraph_super_graph.rds"))
-    fwrite(as.data.table(vertex_attr(super_g)), file.path(NG$tables, "ngraph_super_graph_nodes.tsv"), sep = "\t")
-    fwrite(super_edges, file.path(NG$tables, "ngraph_super_graph_edges.tsv"), sep = "\t")
-  }
-
-  layout_dt <- as.data.table(layout_with_fr(super_g, weights = E(super_g)$weight))
-  setnames(layout_dt, c("x", "y"))
-  layout_dt[, core := V(super_g)$name]
-  node_dt <- merge(layout_dt, as.data.table(vertex_attr(super_g)), by.x = "core", by.y = "name", all.x = TRUE)
-  edge_plot <- merge(super_edges, layout_dt, by.x = "from", by.y = "core")
-  edge_plot <- merge(edge_plot, layout_dt, by.x = "to", by.y = "core", suffixes = c("_from", "_to"))
-
-  p <- ggplot() +
-    geom_segment(data = edge_plot, aes(x = x_from, y = y_from, xend = x_to, yend = y_to, linewidth = weight), alpha = 0.65, color = "#355c7d") +
-    geom_point(data = node_dt, aes(x, y, fill = leiden_module), shape = 21, size = 9, color = "black") +
-    geom_text(data = node_dt, aes(x, y, label = core), size = 3.4) +
-    scale_linewidth(range = c(0.4, 2.8)) +
-    labs(title = paste("NGraph graph-of-graphs:", method_suffix), linewidth = "Similarity", fill = "Leiden") +
-    theme_void(base_size = 11)
-  ggsave(file.path(NG$figures, paste0("ngraph_super_graph_", method_suffix, ".png")), p, width = 7, height = 5.2, dpi = 180)
-  if (method_suffix == "spearman") {
-    ggsave(file.path(NG$figures, "ngraph_super_graph.png"), p, width = 7, height = 5.2, dpi = 180)
-  }
+  report <- file.path(dirs$reports, "NGRAPH_GRAPH_OF_GRAPHS_REPORT.md")
+  sink(report)
+  cat("# NGraph Graph-of-Graphs Report\n\n")
+  cat("- Generated: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n", sep = "")
+  cat("- Branch: `", NG$branch, "`\n", sep = "")
+  cat("- Prevalence threshold: `", thr, "`\n", sep = "")
+  cat("- Edge weight: mean of edge-Jaccard similarity and normalized-Laplacian spectral-quantile similarity.\n\n")
+  cat(ng_md_table(sim_dt))
+  sink()
 }
 
-sim <- rbindlist(all_sim, fill = TRUE)
-fwrite(sim, file.path(NG$tables, "ngraph_graph_similarity.tsv"), sep = "\t")
-
-report <- file.path(NG$reports, "NGRAPH_GRAPH_OF_GRAPHS_REPORT.md")
-sink(report)
-cat("# NGraph Graph-of-Graphs Report\n\n")
-cat("- Generated: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n", sep = "")
-cat("- Nodes: site-specific taxon graphs.\n")
-cat("- Edge weight: mean of edge-Jaccard similarity and normalized-Laplacian spectral-quantile similarity.\n")
-cat("- Methods compared: `", paste(methods, collapse = "`, `"), "`.\n\n", sep = "")
-cat("## Similarity Table\n\n")
-cat(ng_md_table(sim))
-cat("\n## Outputs\n\n")
-cat("- `results/ngraph/graphs/ngraph_super_graph_<method>.graphml`\n")
-cat("- `results/ngraph/tables/ngraph_graph_similarity.tsv`\n")
-cat("- `results/ngraph/figures/ngraph_super_graph_<method>.png`\n")
-sink()
-
-ng_log(LOG, "Method Validated: graph-of-graphs figure and GraphML written")
+fwrite(rbindlist(all_sim, fill = TRUE), file.path(NG$tables, "ngraph_all_threshold_graph_similarity.tsv"), sep = "\t")
+ng_log(LOG, "Method Validated: threshold-specific graph-of-graphs outputs written")
 ng_log(LOG, "Complete")

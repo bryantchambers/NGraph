@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+<!-- Created by igraph -->
+  <key id="v_name" for="node" attr.name="name" attr.type="string"/>
+  <key id="v_core" for="node" attr.name="core" attr.type="string"/>
+  <key id="v_method" for="node" attr.name="method" attr.type="string"/>
+  <key id="v_threshold" for="node" attr.name="threshold" attr.type="double"/>
+  <key id="v_leiden_module" for="node" attr.name="leiden_module" attr.type="string"/>
+  <key id="e_threshold" for="edge" attr.name="threshold" attr.type="double"/>
+  <key id="e_method" for="edge" attr.name="method" attr.type="string"/>
+  <key id="e_weight" for="edge" attr.name="weight" attr.type="double"/>
+  <key id="e_edge_jaccard" for="edge" attr.name="edge_jaccard" attr.type="double"/>
+  <key id="e_spectral_similarity" for="edge" attr.name="spectral_similarity" attr.type="double"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="n0">
+      <data key="v_name">ST8</data>
+      <data key="v_core">ST8</data>
+      <data key="v_method">bicor</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n1">
+      <data key="v_name">ST13</data>
+      <data key="v_core">ST13</data>
+      <data key="v_method">bicor</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n2">
+      <data key="v_name">GeoB25202_R1</data>
+      <data key="v_core">GeoB25202_R1</data>
+      <data key="v_method">bicor</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n3">
+      <data key="v_name">GeoB25202_R2</data>
+      <data key="v_core">GeoB25202_R2</data>
+      <data key="v_method">bicor</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <edge source="n2" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">bicor</data>
+      <data key="e_weight">0.898838941717667</data>
+      <data key="e_edge_jaccard">0.922492235176601</data>
+      <data key="e_spectral_similarity">0.875185648258732</data>
+    </edge>
+    <edge source="n1" target="n2">
+      <data key="e_threshold">3</data>
+      <data key="e_method">bicor</data>
+      <data key="e_weight">0.703690967976375</data>
+      <data key="e_edge_jaccard">0.772711511789182</data>
+      <data key="e_spectral_similarity">0.634670424163569</data>
+    </edge>
+    <edge source="n0" target="n2">
+      <data key="e_threshold">3</data>
+      <data key="e_method">bicor</data>
+      <data key="e_weight">0.929036192528277</data>
+      <data key="e_edge_jaccard">0.939872686077159</data>
+      <data key="e_spectral_similarity">0.918199698979394</data>
+    </edge>
+    <edge source="n1" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">bicor</data>
+      <data key="e_weight">0.722677633607409</data>
+      <data key="e_edge_jaccard">0.766358847423204</data>
+      <data key="e_spectral_similarity">0.678996419791614</data>
+    </edge>
+    <edge source="n0" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">bicor</data>
+      <data key="e_weight">0.919977608658413</data>
+      <data key="e_edge_jaccard">0.898530867016823</data>
+      <data key="e_spectral_similarity">0.941424350300004</data>
+    </edge>
+    <edge source="n0" target="n1">
+      <data key="e_threshold">3</data>
+      <data key="e_method">bicor</data>
+      <data key="e_weight">0.713742559135004</data>
+      <data key="e_edge_jaccard">0.771018455228981</data>
+      <data key="e_spectral_similarity">0.656466663041026</data>
+    </edge>
+  </graph>
+</graphml>

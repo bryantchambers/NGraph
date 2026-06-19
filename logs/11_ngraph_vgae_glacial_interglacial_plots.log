@@ -1,0 +1,13 @@
+[2026-06-17 12:24:38] Method Validated: prev_10/bicor enrichment and site plots written 
+[2026-06-17 12:24:39] Method Validated: prev_10/mi_aracne enrichment and site plots written 
+[2026-06-17 12:24:40] Method Validated: prev_10/pearson enrichment and site plots written 
+[2026-06-17 12:24:40] Method Validated: prev_10/spearman enrichment and site plots written 
+[2026-06-17 12:24:41] Method Validated: prev_3/bicor enrichment and site plots written 
+[2026-06-17 12:24:42] Method Validated: prev_3/mi_aracne enrichment and site plots written 
+[2026-06-17 12:24:43] Method Validated: prev_3/pearson enrichment and site plots written 
+[2026-06-17 12:24:44] Method Validated: prev_3/spearman enrichment and site plots written 
+[2026-06-17 12:24:45] Method Validated: prev_5/bicor enrichment and site plots written 
+[2026-06-17 12:24:46] Method Validated: prev_5/mi_aracne enrichment and site plots written 
+[2026-06-17 12:24:47] Method Validated: prev_5/pearson enrichment and site plots written 
+[2026-06-17 12:24:47] Method Validated: prev_5/spearman enrichment and site plots written 
+[2026-06-17 12:24:47] Wrote summary to /src/results/ngraph/abundance_thresholding/deep_modules/vgae_state_plot_summary.tsv 

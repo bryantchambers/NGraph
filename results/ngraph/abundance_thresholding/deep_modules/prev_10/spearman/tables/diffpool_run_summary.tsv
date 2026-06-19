@@ -1,0 +1,2 @@
+threshold	method	best_epoch	best_loss	assign_dim_1	assign_dim_2	n_taxa	n_sites
+prev_10	spearman	5	5.7344069480896	13	6	173	4

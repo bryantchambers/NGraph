@@ -1,0 +1,17 @@
+threshold	core	method	method_suffix	samples	nodes	edges	density	components	threshold	top_variable_taxa
+3	ST8	pearson_abs_threshold	pearson	115	374	4318	0.0619059224957348	36	0.55	374
+3	ST8	bicor_abs_threshold	bicor	115	374	63693	0.913148198592135	3	0.55	374
+3	ST8	spearman_abs_threshold	spearman	115	374	45262	0.648908259379794	12	0.55	374
+3	ST8	mi_aracne	mi_aracne	115	374	2912	0.0417485053977721	1	0	374
+3	ST13	pearson_abs_threshold	pearson	48	374	6043	0.0866367507275881	22	0.55	374
+3	ST13	bicor_abs_threshold	bicor	48	374	50311	0.721294318361027	11	0.55	374
+3	ST13	spearman_abs_threshold	spearman	48	374	24603	0.352726125790311	25	0.55	374
+3	ST13	mi_aracne	mi_aracne	48	374	3832	0.0549382804547605	1	0	374
+3	GeoB25202_R1	pearson_abs_threshold	pearson	26	374	27065	0.388023110779774	6	0.55	374
+3	GeoB25202_R1	bicor_abs_threshold	bicor	26	374	62164	0.891227365915901	2	0.55	374
+3	GeoB25202_R1	spearman_abs_threshold	spearman	26	374	51086	0.732405270175338	2	0.55	374
+3	GeoB25202_R1	mi_aracne	mi_aracne	26	374	40193	0.576235466158191	1	0	374
+3	GeoB25202_R2	pearson_abs_threshold	pearson	25	374	23203	0.332654728964459	7	0.55	374
+3	GeoB25202_R2	bicor_abs_threshold	bicor	25	374	61012	0.874711473670628	2	0.55	374
+3	GeoB25202_R2	spearman_abs_threshold	spearman	25	374	49674	0.712161832805264	1	0.55	374
+3	GeoB25202_R2	mi_aracne	mi_aracne	25	374	39264	0.562916660693037	1	0	374

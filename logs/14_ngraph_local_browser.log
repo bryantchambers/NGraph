@@ -1,0 +1,5 @@
+[2026-06-19 14:17:15] Starting local browser
+[2026-06-19 14:17:15] Seed: 42
+[2026-06-19 14:17:15] Host: 0.0.0.0 Port: 8012
+[2026-06-19 14:17:16] Browser ready: http://0.0.0.0:8012
+[2026-06-19 14:17:28] 127.0.0.1 - "GET /api/query?query=What%20taxa%20work%20together%20to%20transition%20from%20glacial%20to%20interglacial%20periods%3F HTTP/1.1" 200 -

@@ -1,0 +1,11 @@
+{
+  "generated": "2026-06-19 14:16:57 CEST",
+  "branch": "abundance_thresholding",
+  "threshold": "prev_5",
+  "method": "pearson",
+  "seed": 42,
+  "cards_tsv": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/cards/evidence_cards.tsv",
+  "cards_jsonl": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/cards/evidence_cards.jsonl",
+  "sample_abundance_long": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/tables/sample_taxon_abundance_long.tsv",
+  "sample_clr_long": "/src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/tables/sample_taxon_clr_long.tsv"
+}

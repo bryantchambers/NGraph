@@ -1,0 +1,2 @@
+threshold	method	validation_core	best_epoch	best_heldout_auc	module_k	module_silhouette
+prev_5	mi_aracne	GeoB25202_R2	1	0.7445180978618176	2	0.727821946144104

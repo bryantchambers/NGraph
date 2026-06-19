@@ -1,0 +1,4 @@
+branch	threshold	matrix	abundance_column	samples	taxa	pseudocount	prevalence_min_samples	max_abs_sample_clr_mean
+abundance_thresholding	3	ngraph_clr_global	tax_abund_tad	214	374	0.5	3	3.03975501929455e-16
+abundance_thresholding	5	ngraph_clr_global	tax_abund_tad	214	274	0.5	5	4.58676081706452e-16
+abundance_thresholding	10	ngraph_clr_global	tax_abund_tad	214	173	0.5	10	4.312542615885e-16

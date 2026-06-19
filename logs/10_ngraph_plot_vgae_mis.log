@@ -1,0 +1,20 @@
+[2026-06-17 12:06:27] Loaded metadata from /src/Source/ROCS/data/metadata_v5.tsv
+[2026-06-17 12:06:29] Method Validated: prev_5/bicor MIS plot written
+[2026-06-17 12:06:29] Wrote summary to /src/results/ngraph/abundance_thresholding/deep_modules/vgae_mis_plot_summary.tsv
+[2026-06-17 12:07:24] Loaded metadata from /src/Source/ROCS/data/metadata_v5.tsv
+[2026-06-17 12:07:25] Method Validated: prev_5/bicor MIS plot written
+[2026-06-17 12:07:25] Wrote summary to /src/results/ngraph/abundance_thresholding/deep_modules/vgae_mis_plot_summary.tsv
+[2026-06-17 12:07:39] Loaded metadata from /src/Source/ROCS/data/metadata_v5.tsv
+[2026-06-17 12:07:40] Method Validated: prev_10/bicor MIS plot written
+[2026-06-17 12:07:40] Method Validated: prev_10/mi_aracne MIS plot written
+[2026-06-17 12:07:40] Method Validated: prev_10/pearson MIS plot written
+[2026-06-17 12:07:41] Method Validated: prev_10/spearman MIS plot written
+[2026-06-17 12:07:41] Method Validated: prev_3/bicor MIS plot written
+[2026-06-17 12:07:42] Method Validated: prev_3/mi_aracne MIS plot written
+[2026-06-17 12:07:42] Method Validated: prev_3/pearson MIS plot written
+[2026-06-17 12:07:42] Method Validated: prev_3/spearman MIS plot written
+[2026-06-17 12:07:43] Method Validated: prev_5/bicor MIS plot written
+[2026-06-17 12:07:43] Method Validated: prev_5/mi_aracne MIS plot written
+[2026-06-17 12:07:44] Method Validated: prev_5/pearson MIS plot written
+[2026-06-17 12:07:44] Method Validated: prev_5/spearman MIS plot written
+[2026-06-17 12:07:44] Wrote summary to /src/results/ngraph/abundance_thresholding/deep_modules/vgae_mis_plot_summary.tsv

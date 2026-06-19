@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+<!-- Created by igraph -->
+  <key id="v_name" for="node" attr.name="name" attr.type="string"/>
+  <key id="v_core" for="node" attr.name="core" attr.type="string"/>
+  <key id="v_method" for="node" attr.name="method" attr.type="string"/>
+  <key id="v_threshold" for="node" attr.name="threshold" attr.type="double"/>
+  <key id="v_leiden_module" for="node" attr.name="leiden_module" attr.type="string"/>
+  <key id="e_threshold" for="edge" attr.name="threshold" attr.type="double"/>
+  <key id="e_method" for="edge" attr.name="method" attr.type="string"/>
+  <key id="e_weight" for="edge" attr.name="weight" attr.type="double"/>
+  <key id="e_edge_jaccard" for="edge" attr.name="edge_jaccard" attr.type="double"/>
+  <key id="e_spectral_similarity" for="edge" attr.name="spectral_similarity" attr.type="double"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="n0">
+      <data key="v_name">ST8</data>
+      <data key="v_core">ST8</data>
+      <data key="v_method">pearson</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n1">
+      <data key="v_name">ST13</data>
+      <data key="v_core">ST13</data>
+      <data key="v_method">pearson</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n2">
+      <data key="v_name">GeoB25202_R1</data>
+      <data key="v_core">GeoB25202_R1</data>
+      <data key="v_method">pearson</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n3">
+      <data key="v_name">GeoB25202_R2</data>
+      <data key="v_core">GeoB25202_R2</data>
+      <data key="v_method">pearson</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <edge source="n2" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">pearson</data>
+      <data key="e_weight">0.691237720976459</data>
+      <data key="e_edge_jaccard">0.448144733809634</data>
+      <data key="e_spectral_similarity">0.934330708143285</data>
+    </edge>
+    <edge source="n1" target="n2">
+      <data key="e_threshold">3</data>
+      <data key="e_method">pearson</data>
+      <data key="e_weight">0.285339918993116</data>
+      <data key="e_edge_jaccard">0.107698484392251</data>
+      <data key="e_spectral_similarity">0.46298135359398</data>
+    </edge>
+    <edge source="n0" target="n2">
+      <data key="e_threshold">3</data>
+      <data key="e_method">pearson</data>
+      <data key="e_weight">0.236830665969455</data>
+      <data key="e_edge_jaccard">0.0783424389238223</data>
+      <data key="e_spectral_similarity">0.395318893015088</data>
+    </edge>
+    <edge source="n1" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">pearson</data>
+      <data key="e_weight">0.286993997393778</data>
+      <data key="e_edge_jaccard">0.105416335941339</data>
+      <data key="e_spectral_similarity">0.468571658846218</data>
+    </edge>
+    <edge source="n0" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">pearson</data>
+      <data key="e_weight">0.240854025497608</data>
+      <data key="e_edge_jaccard">0.0831201542760439</data>
+      <data key="e_spectral_similarity">0.398587896719173</data>
+    </edge>
+    <edge source="n0" target="n1">
+      <data key="e_threshold">3</data>
+      <data key="e_method">pearson</data>
+      <data key="e_weight">0.384485855119422</data>
+      <data key="e_edge_jaccard">0.105527102005975</data>
+      <data key="e_spectral_similarity">0.663444608232868</data>
+    </edge>
+  </graph>
+</graphml>

@@ -1,0 +1,5 @@
+name	core	method	threshold	leiden_module
+ST8	ST8	mi_aracne	10	S1
+ST13	ST13	mi_aracne	10	S1
+GeoB25202_R1	GeoB25202_R1	mi_aracne	10	S2
+GeoB25202_R2	GeoB25202_R2	mi_aracne	10	S2

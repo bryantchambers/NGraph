@@ -1,0 +1,6 @@
+threshold	PC	covariate	covariate_class	r2
+10	PC1	core	core_or_site	0.0472492807797508
+10	PC2	core	core_or_site	0.16313083498239
+10	PC3	core	core_or_site	0.197691254782869
+10	PC4	core	core_or_site	0.0411892513998461
+10	PC5	core	core_or_site	0.181760084339389

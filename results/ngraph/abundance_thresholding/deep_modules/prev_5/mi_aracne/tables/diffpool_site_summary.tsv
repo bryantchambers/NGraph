@@ -1,0 +1,5 @@
+threshold	method	site	present_taxa	mean_assignment_entropy	mean_site_similarity
+prev_5	mi_aracne	ST8	267	0.09075795114040375	0.2939225866216077
+prev_5	mi_aracne	ST13	260	0.032675255089998245	0.30309756264786764
+prev_5	mi_aracne	GeoB25202_R1	151	0.0	0.4069390019978356
+prev_5	mi_aracne	GeoB25202_R2	173	0.01636842079460621	0.4075423784606383

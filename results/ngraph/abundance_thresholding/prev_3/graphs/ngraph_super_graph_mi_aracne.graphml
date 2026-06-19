@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+<!-- Created by igraph -->
+  <key id="v_name" for="node" attr.name="name" attr.type="string"/>
+  <key id="v_core" for="node" attr.name="core" attr.type="string"/>
+  <key id="v_method" for="node" attr.name="method" attr.type="string"/>
+  <key id="v_threshold" for="node" attr.name="threshold" attr.type="double"/>
+  <key id="v_leiden_module" for="node" attr.name="leiden_module" attr.type="string"/>
+  <key id="e_threshold" for="edge" attr.name="threshold" attr.type="double"/>
+  <key id="e_method" for="edge" attr.name="method" attr.type="string"/>
+  <key id="e_weight" for="edge" attr.name="weight" attr.type="double"/>
+  <key id="e_edge_jaccard" for="edge" attr.name="edge_jaccard" attr.type="double"/>
+  <key id="e_spectral_similarity" for="edge" attr.name="spectral_similarity" attr.type="double"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="n0">
+      <data key="v_name">ST8</data>
+      <data key="v_core">ST8</data>
+      <data key="v_method">mi_aracne</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n1">
+      <data key="v_name">ST13</data>
+      <data key="v_core">ST13</data>
+      <data key="v_method">mi_aracne</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S1</data>
+    </node>
+    <node id="n2">
+      <data key="v_name">GeoB25202_R1</data>
+      <data key="v_core">GeoB25202_R1</data>
+      <data key="v_method">mi_aracne</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S2</data>
+    </node>
+    <node id="n3">
+      <data key="v_name">GeoB25202_R2</data>
+      <data key="v_core">GeoB25202_R2</data>
+      <data key="v_method">mi_aracne</data>
+      <data key="v_threshold">3</data>
+      <data key="v_leiden_module">S2</data>
+    </node>
+    <edge source="n2" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.824583592323841</data>
+      <data key="e_edge_jaccard">0.768225921310308</data>
+      <data key="e_spectral_similarity">0.880941263337374</data>
+    </edge>
+    <edge source="n1" target="n2">
+      <data key="e_threshold">3</data>
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.26375341173958</data>
+      <data key="e_edge_jaccard">0.0792292795332533</data>
+      <data key="e_spectral_similarity">0.448277543945907</data>
+    </edge>
+    <edge source="n0" target="n2">
+      <data key="e_threshold">3</data>
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.23748489612082</data>
+      <data key="e_edge_jaccard">0.0550469943215195</data>
+      <data key="e_spectral_similarity">0.41992279792012</data>
+    </edge>
+    <edge source="n1" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.262827833120341</data>
+      <data key="e_edge_jaccard">0.0792887553218132</data>
+      <data key="e_spectral_similarity">0.446366910918869</data>
+    </edge>
+    <edge source="n0" target="n3">
+      <data key="e_threshold">3</data>
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.236451064728346</data>
+      <data key="e_edge_jaccard">0.0545581837275591</data>
+      <data key="e_spectral_similarity">0.418343945729132</data>
+    </edge>
+    <edge source="n0" target="n1">
+      <data key="e_threshold">3</data>
+      <data key="e_method">mi_aracne</data>
+      <data key="e_weight">0.446164420589202</data>
+      <data key="e_edge_jaccard">0.0679334916864608</data>
+      <data key="e_spectral_similarity">0.824395349491944</data>
+    </edge>
+  </graph>
+</graphml>

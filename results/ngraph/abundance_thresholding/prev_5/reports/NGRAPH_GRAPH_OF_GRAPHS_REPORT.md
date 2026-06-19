@@ -1,0 +1,33 @@
+# NGraph Graph-of-Graphs Report
+
+- Generated: 2026-06-15 10:05:22 CEST
+- Branch: `abundance_thresholding`
+- Prevalence threshold: `5`
+- Edge weight: mean of edge-Jaccard similarity and normalized-Laplacian spectral-quantile similarity.
+
+|threshold|method|core_a|core_b|edge_intersection|edge_union|edge_jaccard|spectral_distance|spectral_similarity|super_weight|
+|---|---|---|---|---|---|---|---|---|---|
+|5|pearson|GeoB25202_R1|GeoB25202_R2|5599|15100|0.3709|0.1488|0.8705|0.6207|
+|5|pearson|GeoB25202_R1|ST13|1192|12400|0.09609|1.485|0.4025|0.2493|
+|5|pearson|GeoB25202_R1|ST8|839|11890|0.07055|1.908|0.3439|0.2072|
+|5|pearson|GeoB25202_R2|ST13|1039|11300|0.09191|1.523|0.3964|0.2442|
+|5|pearson|GeoB25202_R2|ST8|732|10740|0.06812|1.944|0.3397|0.2039|
+|5|pearson|ST13|ST8|506|3874|0.1306|0.6448|0.608|0.3693|
+|5|bicor|GeoB25202_R1|GeoB25202_R2|29600|32500|0.9107|0.4|0.7143|0.8125|
+|5|bicor|GeoB25202_R1|ST13|20290|32680|0.6209|0.7998|0.5556|0.5883|
+|5|bicor|GeoB25202_R1|ST8|31020|33750|0.919|0.09372|0.9143|0.9167|
+|5|bicor|GeoB25202_R2|ST13|19970|31740|0.629|0.7433|0.5736|0.6013|
+|5|bicor|GeoB25202_R2|ST8|29610|33900|0.8733|0.4071|0.7107|0.792|
+|5|bicor|ST13|ST8|20750|33640|0.6168|0.7484|0.572|0.5944|
+|5|spearman|GeoB25202_R1|GeoB25202_R2|21270|25440|0.8361|0.1521|0.868|0.852|
+|5|spearman|GeoB25202_R1|ST13|7752|24460|0.3169|1.454|0.4076|0.3623|
+|5|spearman|GeoB25202_R1|ST8|16990|26940|0.6308|0.5966|0.6263|0.6286|
+|5|spearman|GeoB25202_R2|ST13|7452|23600|0.3157|1.513|0.3979|0.3568|
+|5|spearman|GeoB25202_R2|ST8|15840|26930|0.5884|0.6868|0.5928|0.5906|
+|5|spearman|ST13|ST8|7318|20950|0.3493|1.262|0.442|0.3956|
+|5|mi_aracne|GeoB25202_R1|GeoB25202_R2|13520|19960|0.6774|0.139|0.878|0.7777|
+|5|mi_aracne|GeoB25202_R1|ST13|709|17360|0.04084|1.402|0.4162|0.2285|
+|5|mi_aracne|GeoB25202_R1|ST8|559|17300|0.03231|1.52|0.3969|0.2146|
+|5|mi_aracne|GeoB25202_R2|ST13|704|16820|0.04185|1.4|0.4166|0.2292|
+|5|mi_aracne|GeoB25202_R2|ST8|562|16750|0.03355|1.514|0.3978|0.2157|
+|5|mi_aracne|ST13|ST8|130|1777|0.07316|0.205|0.8298|0.4515|

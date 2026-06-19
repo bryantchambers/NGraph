@@ -1,0 +1,33 @@
+# NGraph Graph-of-Graphs Report
+
+- Generated: 2026-06-15 10:05:24 CEST
+- Branch: `abundance_thresholding`
+- Prevalence threshold: `10`
+- Edge weight: mean of edge-Jaccard similarity and normalized-Laplacian spectral-quantile similarity.
+
+|threshold|method|core_a|core_b|edge_intersection|edge_union|edge_jaccard|spectral_distance|spectral_similarity|super_weight|
+|---|---|---|---|---|---|---|---|---|---|
+|10|pearson|GeoB25202_R1|GeoB25202_R2|1248|4530|0.2755|0.2984|0.7702|0.5228|
+|10|pearson|GeoB25202_R1|ST13|213|2915|0.07307|2.236|0.309|0.191|
+|10|pearson|GeoB25202_R1|ST8|267|2993|0.08921|2.269|0.3059|0.1976|
+|10|pearson|GeoB25202_R2|ST13|234|3650|0.06411|2.301|0.3029|0.1835|
+|10|pearson|GeoB25202_R2|ST8|260|3756|0.06922|2.331|0.3002|0.1847|
+|10|pearson|ST13|ST8|182|1184|0.1537|0.3019|0.7681|0.4609|
+|10|bicor|GeoB25202_R1|GeoB25202_R2|10340|11990|0.8623|0.6117|0.6205|0.7414|
+|10|bicor|GeoB25202_R1|ST13|1300|11680|0.1113|1.636|0.3794|0.2453|
+|10|bicor|GeoB25202_R1|ST8|10910|12680|0.8602|0.1186|0.8939|0.8771|
+|10|bicor|GeoB25202_R2|ST13|1282|11230|0.1142|1.692|0.3715|0.2428|
+|10|bicor|GeoB25202_R2|ST8|10240|12860|0.7964|0.5958|0.6266|0.7115|
+|10|bicor|ST13|ST8|1402|12360|0.1135|1.673|0.3742|0.2438|
+|10|spearman|GeoB25202_R1|GeoB25202_R2|5514|7575|0.7279|0.1614|0.861|0.7945|
+|10|spearman|GeoB25202_R1|ST13|1016|6989|0.1454|1.791|0.3583|0.2518|
+|10|spearman|GeoB25202_R1|ST8|3682|8252|0.4462|0.7555|0.5696|0.5079|
+|10|spearman|GeoB25202_R2|ST13|928|6640|0.1398|1.81|0.3559|0.2478|
+|10|spearman|GeoB25202_R2|ST8|3341|8156|0.4096|0.7059|0.5862|0.4979|
+|10|spearman|ST13|ST8|962|5451|0.1765|1.578|0.3879|0.2822|
+|10|mi_aracne|GeoB25202_R1|GeoB25202_R2|2873|5525|0.52|0.1165|0.8957|0.7078|
+|10|mi_aracne|GeoB25202_R1|ST13|149|4195|0.03552|1.451|0.4079|0.2217|
+|10|mi_aracne|GeoB25202_R1|ST8|120|4169|0.02878|1.509|0.3986|0.2137|
+|10|mi_aracne|GeoB25202_R2|ST13|148|4560|0.03246|1.514|0.3978|0.2151|
+|10|mi_aracne|GeoB25202_R2|ST8|137|4516|0.03034|1.571|0.3889|0.2096|
+|10|mi_aracne|ST13|ST8|26|573|0.04538|0.1242|0.8896|0.4675|

@@ -1,0 +1,13 @@
+threshold	method	taxon_nodes	site_nodes	taxon_taxon_edges	site_site_edges	taxon_site_edges	taxon_taxon_positive	taxon_taxon_negative
+3	pearson	374	4	60629	6	1042	52189	8440
+3	bicor	374	4	237180	6	1042	234314	2866
+3	spearman	374	4	170625	6	1042	169334	1291
+3	mi_aracne	374	4	86201	6	1042	86201	0
+5	pearson	274	4	25074	6	851	20150	4924
+5	bicor	274	4	116483	6	851	115259	1224
+5	spearman	274	4	74984	6	851	74354	630
+5	mi_aracne	274	4	35386	6	851	35386	0
+10	pearson	173	4	7144	6	612	5102	2042
+10	bicor	173	4	36093	6	612	35495	598
+10	spearman	173	4	19502	6	612	19407	95
+10	mi_aracne	173	4	8997	6	612	8997	0

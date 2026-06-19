@@ -1,0 +1,9 @@
+{
+  "branch": "abundance_thresholding",
+  "method_filter": null,
+  "seed": 42,
+  "summary_table": "link_prediction_summary.tsv",
+  "threshold_filter": null,
+  "top_candidates_table": "link_prediction_top_candidates.tsv",
+  "top_n": 100
+}
