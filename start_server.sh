@@ -8,8 +8,20 @@ HOST="${NG_HOST:-0.0.0.0}"
 
 pick_python() {
   if [[ -n "${NG_PYTHON:-}" ]]; then
-    printf '%s\n' "${NG_PYTHON}"
-    return 0
+    if "${NG_PYTHON}" - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+
+required = ["networkx", "numpy", "pandas", "scipy", "sklearn"]
+if sys.version_info < (3, 10):
+    raise SystemExit(1)
+missing = [name for name in required if importlib.util.find_spec(name) is None]
+raise SystemExit(0 if not missing else 1)
+PY
+    then
+      printf '%s\n' "${NG_PYTHON}"
+      return 0
+    fi
   fi
 
   local candidates=(
@@ -25,8 +37,14 @@ pick_python() {
   for py in "${candidates[@]}"; do
     if command -v "${py}" >/dev/null 2>&1; then
       if "${py}" - <<'PY' >/dev/null 2>&1
+import importlib.util
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+
+required = ["networkx", "numpy", "pandas", "scipy", "sklearn"]
+if sys.version_info < (3, 10):
+    raise SystemExit(1)
+missing = [name for name in required if importlib.util.find_spec(name) is None]
+raise SystemExit(0 if not missing else 1)
 PY
       then
         printf '%s\n' "${py}"

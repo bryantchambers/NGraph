@@ -110,3 +110,12 @@ When you want to turn the demo on, set:
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`
 
 The adapter will use the lightweight `gemini-3.1-flash-lite` model by default unless you override `NG_GEMINI_MODEL`.
+
+In the browser, you can now switch per query between:
+- `Local retrieval`
+- `Gemini synthesis`
+
+The browser header now also shows:
+- current mode
+- whether the LLM path is active or falling back
+- the active model name when Gemini is selected

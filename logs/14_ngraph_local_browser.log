@@ -1,5 +1,19 @@
-[2026-06-19 14:17:15] Starting local browser
-[2026-06-19 14:17:15] Seed: 42
-[2026-06-19 14:17:15] Host: 0.0.0.0 Port: 8012
-[2026-06-19 14:17:16] Browser ready: http://0.0.0.0:8012
-[2026-06-19 14:17:28] 127.0.0.1 - "GET /api/query?query=What%20taxa%20work%20together%20to%20transition%20from%20glacial%20to%20interglacial%20periods%3F HTTP/1.1" 200 -
+[2026-06-19 16:49:04] Starting local browser
+[2026-06-19 16:49:04] Seed: 42
+[2026-06-19 16:49:04] Host: 0.0.0.0 Port: 10298
+[2026-06-19 16:49:08] Browser ready: http://0.0.0.0:10298
+[2026-06-19 16:49:14] 127.0.0.1 - "GET /api/health HTTP/1.1" 200 -
+[2026-06-19 16:49:17] query provider=gemini status=ok model=gemini-3.1-flash-lite query=What taxa work together to transition from glacial to interglacial periods?
+[2026-06-19 16:49:17] 127.0.0.1 - "GET /api/query?query=What%20taxa%20work%20together%20to%20transition%20from%20glacial%20to%20interglacial%20periods%3F&llm_provider=gemini HTTP/1.1" 200 -
+[2026-06-19 16:49:57] 127.0.0.1 - "GET / HTTP/1.1" 200 -
+[2026-06-19 16:49:57] 127.0.0.1 - "GET /api/summary HTTP/1.1" 200 -
+[2026-06-19 16:49:57] 127.0.0.1 - "GET /api/supergraph?threshold=prev_5&method=pearson HTTP/1.1" 200 -
+[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/cards?query=&card_type=&threshold=&method=&relation_type=&limit=80 HTTP/1.1" 200 -
+[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/report?name=NGRAPH_DEEP_KNOWLEDGE_DISCOVERY_REPORT.md HTTP/1.1" 200 -
+[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/embedding?focus= HTTP/1.1" 200 -
+[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/modules?threshold=prev_5&method=pearson&kind=vgae&module_id=&limit=60 HTTP/1.1" 200 -
+[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/links?threshold=prev_5&method=pearson&relation_type=&focus=&limit=80 HTTP/1.1" 200 -
+[2026-06-19 16:50:00] query provider=gemini status=ok model=gemini-3.1-flash-lite query=What taxa work together to transition from glacial to interglacial periods?
+[2026-06-19 16:50:00] 127.0.0.1 - "GET /api/query?query=What+taxa+work+together+to+transition+from+glacial+to+interglacial+periods%3F&llm_provider=gemini HTTP/1.1" 200 -
+[2026-06-19 16:50:07] query provider=gemini status=ok model=gemini-3.1-flash-lite query=What taxa work together to transition from glacial to interglacial periods?
+[2026-06-19 16:50:07] 127.0.0.1 - "GET /api/query?query=What+taxa+work+together+to+transition+from+glacial+to+interglacial+periods%3F&llm_provider=gemini HTTP/1.1" 200 -

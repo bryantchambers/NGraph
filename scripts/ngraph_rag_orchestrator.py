@@ -289,10 +289,16 @@ def build_system_instruction() -> str:
     )
 
 
-def augment_result(query: str, result: Dict[str, Any], data: Dict[str, Any], top_k: int = 12) -> Dict[str, Any]:
+def augment_result(
+    query: str,
+    result: Dict[str, Any],
+    data: Dict[str, Any],
+    top_k: int = 12,
+    llm_provider: Optional[str] = None,
+) -> Dict[str, Any]:
     bundle = build_retrieval_bundle(query, result, data, top_k=top_k)
     enriched = dict(result)
-    llm_provider = get_enabled_provider()
+    llm_provider = (llm_provider or get_enabled_provider() or "local").strip().lower()
     llm_result: Dict[str, Any] = {
         "provider": "local",
         "status": "disabled",

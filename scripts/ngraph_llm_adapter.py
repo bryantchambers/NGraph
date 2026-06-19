@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from pathlib import Path
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -16,6 +17,34 @@ DEFAULT_MODEL = "gemini-3.1-flash-lite"
 DEFAULT_MAX_OUTPUT_TOKENS = 512
 DEFAULT_TEMPERATURE = 0.2
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists() or not path.is_file():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and ((value[0] == value[-1] == '"') or (value[0] == value[-1] == "'")):
+            value = value[1:-1]
+        value = value.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
+        os.environ.setdefault(key, value)
+
+
+_load_env_file(PROJECT_ROOT / ".env")
+_load_env_file(PROJECT_ROOT / ".env.local")
 
 
 @dataclass

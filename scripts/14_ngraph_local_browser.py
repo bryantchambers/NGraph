@@ -367,6 +367,7 @@ class NGraphBrowser:
             "reports": reports,
             "phase_status": phase_status,
             "questions": list(self.query_module.CANONICAL_QUERIES),
+            "llm_provider_default": os.environ.get("NG_LLM_PROVIDER", "local"),
             "combos": self.available_combos(),
         }
 
@@ -781,8 +782,8 @@ class NGraphBrowser:
             "rows": dataframe_records(frame, limit=limit),
         }
 
-    def query(self, query: str, context_taxa: Optional[List[str]] = None) -> Dict[str, Any]:
-        result = self.query_module.run_query(query, self.query_data, context_taxa=context_taxa)
+    def query(self, query: str, context_taxa: Optional[List[str]] = None, llm_provider: Optional[str] = None) -> Dict[str, Any]:
+        result = self.query_module.run_query(query, self.query_data, context_taxa=context_taxa, llm_provider=llm_provider)
         serializable = dict(result)
         for key in ["semantic_hits", "top_taxa", "link_hits", "retrieved_cards", "retrieved_links"]:
             if key in serializable and isinstance(serializable[key], pd.DataFrame):
@@ -794,6 +795,22 @@ class NGraphBrowser:
             }
         serializable["markdown"] = self.query_module.render_answer(result)
         return serializable
+
+    def health(self) -> Dict[str, Any]:
+        provider = os.environ.get("NG_LLM_PROVIDER", "local").strip().lower() or "local"
+        api_key_present = bool((os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip())
+        return {
+            "status": "ok",
+            "branch": self.branch,
+            "project_root": str(PROJECT_ROOT),
+            "discovery_dir": str(self.discovery_dir),
+            "cards": int(len(self.cards)),
+            "link_predictions": int(len(self.link_predictions)),
+            "query_results": int(len(self.query_results)),
+            "llm_provider_default": provider,
+            "gemini_key_present": api_key_present,
+            "gemini_model": os.environ.get("NG_GEMINI_MODEL", "gemini-3.1-flash-lite"),
+        }
 
     def report_names(self) -> List[str]:
         reports = []
@@ -860,6 +877,12 @@ HTML_PAGE = """<!doctype html>
       color: var(--muted);
       font-size: 13px;
       text-align: right;
+    }
+    .title .meta-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
     }
     nav {
       display: flex;
@@ -1017,6 +1040,29 @@ HTML_PAGE = """<!doctype html>
       padding: 14px;
       color: #d1d5db;
     }
+    .status-banner {
+      margin: 14px 24px 0;
+      max-width: 1500px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(15, 23, 42, 0.82);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .status-banner.ok {
+      border-color: rgba(34, 197, 94, 0.35);
+      color: #bbf7d0;
+    }
+    .status-banner.warning {
+      border-color: rgba(245, 158, 11, 0.38);
+      color: #fde68a;
+    }
+    .status-banner.error {
+      border-color: rgba(251, 113, 133, 0.4);
+      color: #fecdd3;
+    }
     .two-col {
       display: grid;
       grid-template-columns: 1.2fr 0.8fr;
@@ -1036,7 +1082,10 @@ HTML_PAGE = """<!doctype html>
         <h1>NGraph Local Browser</h1>
         <div class="muted">Deep knowledge discovery, local-first, bound to 0.0.0.0 for network access.</div>
       </div>
-      <div class="meta" id="header-meta">Loading summary...</div>
+      <div class="meta-stack">
+        <div class="meta" id="header-meta">Loading summary...</div>
+        <div class="chip-row" id="llm-status"></div>
+      </div>
     </div>
     <nav>
       <a href="#overview">Overview</a>
@@ -1049,6 +1098,17 @@ HTML_PAGE = """<!doctype html>
       <a href="#reports">Reports</a>
     </nav>
   </header>
+  <div id="browser-status" class="status-banner">Loading browser...</div>
+  <script>
+    (function () {
+      var el = document.getElementById("browser-status");
+      if (el) {
+        el.textContent = "Browser JS bootstrap active. Loading summary...";
+        el.className = "status-banner ok";
+      }
+      window.__ngraphBrowserBootstrap = true;
+    })();
+  </script>
   <main>
     <section id="overview">
       <div class="section-head">
@@ -1167,15 +1227,22 @@ HTML_PAGE = """<!doctype html>
         <h2>Query Console</h2>
         <p>Run the local natural-language query engine against the learned network and evidence cards.</p>
       </div>
-      <div class="section-body">
-        <div class="panel" style="margin-bottom: 16px;">
-          <textarea id="query-text" placeholder="Ask about taxa, modules, transitions, seeding, or functional capabilities."></textarea>
-          <div class="controls" style="margin-top: 10px;">
-            <button onclick="runQuery()">Run query</button>
-            <button class="secondary" onclick="setCanonicalQuery(0)">Transition</button>
-            <button class="secondary" onclick="setCanonicalQuery(1)">Seeding</button>
-            <button class="secondary" onclick="setCanonicalQuery(2)">Function</button>
-          </div>
+        <div class="section-body">
+          <div class="panel" style="margin-bottom: 16px;">
+            <textarea id="query-text" placeholder="Ask about taxa, modules, transitions, seeding, or functional capabilities."></textarea>
+            <div class="controls" style="margin-top: 10px;">
+              <label style="display:flex; align-items:center; gap:8px;">
+                <span class="muted">Mode</span>
+                <select id="query-provider">
+                  <option value="local">Local retrieval</option>
+                  <option value="gemini">Gemini synthesis</option>
+                </select>
+              </label>
+              <button onclick="runQuery()">Run query</button>
+              <button class="secondary" onclick="setCanonicalQuery(0)">Transition</button>
+              <button class="secondary" onclick="setCanonicalQuery(1)">Seeding</button>
+              <button class="secondary" onclick="setCanonicalQuery(2)">Function</button>
+            </div>
         </div>
         <div class="two-col">
           <div class="panel">
@@ -1197,6 +1264,10 @@ HTML_PAGE = """<!doctype html>
             <div id="query-prompt" class="report-box"></div>
           </div>
         </div>
+        <div class="panel" style="margin-top: 16px;">
+          <h3>Query Debug</h3>
+          <div id="query-debug" class="report-box"></div>
+        </div>
       </div>
     </section>
 
@@ -1216,14 +1287,18 @@ HTML_PAGE = """<!doctype html>
   </main>
 
   <script>
+    const PRIMARY_THRESHOLD = "prev_5";
+    const PRIMARY_METHOD = "pearson";
+    window.__ngraphBrowserMainScript = true;
     const state = {
       summary: null,
       cards: [],
       questions: [],
+      llmProvider: "local",
     };
 
     function escapeHtml(text) {
-      return String(text ?? "").replace(/[&<>"']/g, (m) => ({
+      return String(text == null ? "" : text).replace(/[&<>"']/g, (m) => ({
         "&": "&amp;",
         "<": "&lt;",
         ">": "&gt;",
@@ -1238,7 +1313,7 @@ HTML_PAGE = """<!doctype html>
       }
       const cols = Object.keys(rows[0]);
       const body = rows.slice(0, maxRows).map(row => {
-        const cells = cols.map(col => `<td>${escapeHtml(row[col] ?? "")}</td>`).join("");
+        const cells = cols.map(col => `<td>${escapeHtml(row[col] == null ? "" : row[col])}</td>`).join("");
         return `<tr>${cells}</tr>`;
       }).join("");
       return `<table><thead><tr>${cols.map(col => `<th>${escapeHtml(col)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
@@ -1247,6 +1322,52 @@ HTML_PAGE = """<!doctype html>
     function chip(text, color = "") {
       const style = color ? ` style="border-color:${color}; color:${color};"` : "";
       return `<span class="chip"${style}>${escapeHtml(text)}</span>`;
+    }
+
+    function renderLlmStatus(payload = {}) {
+      const provider = payload.llm_provider || state.llmProvider || "local";
+      const status = payload.llm_status || (provider === "gemini" ? "not_run" : "local");
+      const model = payload.llm_model || "";
+      const parts = [
+        chip(`Mode: ${provider}` , provider === "gemini" ? "var(--accent-2)" : "var(--accent)"),
+        chip(`LLM: ${status}`, status === "ok" ? "var(--accent)" : (status && status !== "local" ? "var(--warning)" : "var(--accent)")),
+      ];
+      if (model) {
+        parts.push(chip(`Model: ${model}`, "var(--accent-2)"));
+      }
+      document.getElementById("llm-status").innerHTML = parts.join("");
+    }
+
+    function setBrowserStatus(message, kind = "info") {
+      const el = document.getElementById("browser-status");
+      if (!el) return;
+      el.className = kind ? `status-banner ${kind}` : "status-banner";
+      el.textContent = message;
+    }
+
+    function handleBrowserError(prefix, err) {
+      const message = `${prefix}: ${err && err.message ? err.message : String(err)}`;
+      setBrowserStatus(message, "error");
+      console.error(prefix, err);
+    }
+
+    async function safeLoad(label, fn) {
+      try {
+        await fn();
+        return true;
+      } catch (err) {
+        handleBrowserError(label, err);
+        return false;
+      }
+    }
+
+    function bindEvent(id, eventName, handler) {
+      const el = document.getElementById(id);
+      if (!el) {
+        console.warn(`Missing element for ${id}`);
+        return;
+      }
+      el.addEventListener(eventName, handler);
     }
 
     async function fetchJson(url) {
@@ -1275,20 +1396,24 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function init() {
+      setBrowserStatus("Main browser script active. Loading summary and panels...", "info");
       const summary = await fetchJson("/api/summary");
       state.summary = summary;
       state.questions = summary.questions || [];
+      state.llmProvider = summary.llm_provider_default || "local";
       document.getElementById("header-meta").textContent = `${summary.branch} | ${summary.primary_threshold} / ${summary.primary_method}`;
+      renderLlmStatus({ llm_provider: state.llmProvider, llm_status: state.llmProvider === "gemini" ? "pending_key" : "local" });
+      const counts = summary.counts || {};
       const stats = [
-        ["Cards", summary.counts.cards],
-        ["Embeddings", summary.counts.vgae_embeddings],
-        ["Predicted links", summary.counts.link_predictions],
-        ["Query rows", summary.counts.query_results],
-        ["Reports", summary.counts.reports],
-        ["Combos", summary.combos.length],
+        ["Cards", counts.cards || 0],
+        ["Embeddings", counts.vgae_embeddings || 0],
+        ["Predicted links", counts.link_predictions || 0],
+        ["Query rows", counts.query_results || 0],
+        ["Reports", counts.reports || 0],
+        ["Combos", (summary.combos || []).length],
       ];
       document.getElementById("stats").innerHTML = stats.map(([label, value]) => `<div class="stat"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`).join("");
-      document.getElementById("phase-status").innerHTML = Object.entries(summary.phase_status).map(([k, v]) => chip(`${k}: ${v}`, v === "complete" ? "var(--accent)" : "var(--warning)")).join("");
+      document.getElementById("phase-status").innerHTML = Object.entries(summary.phase_status || {}).map(([k, v]) => chip(`${k}: ${v}`, v === "complete" ? "var(--accent)" : "var(--warning)")).join("");
       document.getElementById("questions").innerHTML = state.questions.map((q, i) => `<span class="chip" style="cursor:pointer" onclick="setCanonicalQuery(${i})">${escapeHtml(q)}</span>`).join("");
 
       populateSelect("card-type", (summary.card_counts || []).map(x => x.card_type), true, "All card types");
@@ -1313,13 +1438,27 @@ HTML_PAGE = """<!doctype html>
       document.getElementById("card-threshold").value = "";
       document.getElementById("card-method").value = "";
       document.getElementById("card-relation").value = "";
-      document.getElementById("link-threshold").value = summary.primary_threshold;
-      document.getElementById("link-method").value = summary.primary_method;
-      document.getElementById("super-threshold").value = summary.primary_threshold;
-      document.getElementById("super-method").value = summary.primary_method;
-      document.getElementById("module-threshold").value = summary.primary_threshold;
-      document.getElementById("module-method").value = summary.primary_method;
-      await Promise.all([loadCards(), loadLinks(), loadSuperGraph(), loadModules(), loadEmbeddings(), loadReport(), loadQueryExample()]);
+      document.getElementById("link-threshold").value = summary.primary_threshold || PRIMARY_THRESHOLD;
+      document.getElementById("link-method").value = summary.primary_method || PRIMARY_METHOD;
+      document.getElementById("super-threshold").value = summary.primary_threshold || PRIMARY_THRESHOLD;
+      document.getElementById("super-method").value = summary.primary_method || PRIMARY_METHOD;
+      document.getElementById("module-threshold").value = summary.primary_threshold || PRIMARY_THRESHOLD;
+      document.getElementById("module-method").value = summary.primary_method || PRIMARY_METHOD;
+      document.getElementById("query-provider").value = state.llmProvider;
+
+      const loaders = [
+        safeLoad("Cards panel", loadCards),
+        safeLoad("Links panel", loadLinks),
+        safeLoad("Super graph panel", loadSuperGraph),
+        safeLoad("Modules panel", loadModules),
+        safeLoad("Embedding panel", loadEmbeddings),
+        safeLoad("Report panel", loadReport),
+      ];
+      await Promise.all(loaders);
+      setBrowserStatus("Panels loaded. Query example will run in the background.", "ok");
+      setTimeout(() => {
+        safeLoad("Example query", loadQueryExample);
+      }, 0);
     }
 
     async function loadCards() {
@@ -1389,14 +1528,41 @@ HTML_PAGE = """<!doctype html>
     async function runQuery() {
       const query = document.getElementById("query-text").value.trim();
       if (!query) return;
-      const params = new URLSearchParams({ query });
-      const data = await fetchJson(`/api/query?${params.toString()}`);
-      document.getElementById("query-answer").textContent = data.markdown || "";
-      document.getElementById("query-table").innerHTML = tableHtml(data.semantic_hits || []);
-      document.getElementById("retrieval-table").innerHTML = tableHtml(data.retrieved_cards || []);
-      document.getElementById("query-prompt").textContent = data.retrieval_prompt || (data.retrieval_bundle && data.retrieval_bundle.prompt_preview) || "";
-      if (data.context_taxa && data.context_taxa.length > 0) {
-        document.getElementById("embedding-focus").value = data.context_taxa[0];
+      const provider = document.getElementById("query-provider").value || "local";
+      state.llmProvider = provider;
+      const params = new URLSearchParams({ query, llm_provider: provider });
+      document.getElementById("query-answer").textContent = "Running query...";
+      document.getElementById("query-debug").textContent = "Waiting for response...";
+      try {
+        const data = await fetchJson(`/api/query?${params.toString()}`);
+        renderLlmStatus(data);
+        document.getElementById("query-answer").textContent = data.markdown || "";
+        document.getElementById("query-table").innerHTML = tableHtml(data.semantic_hits || []);
+        document.getElementById("retrieval-table").innerHTML = tableHtml(data.retrieved_cards || []);
+        document.getElementById("query-prompt").textContent = data.retrieval_prompt || (data.retrieval_bundle && data.retrieval_bundle.prompt_preview) || "";
+        const debugLines = [
+          `provider: ${data.llm_provider || "local"}`,
+          `status: ${data.llm_status || ""}`,
+          `model: ${data.llm_model || ""}`,
+        ];
+        if (data.llm_answer) {
+          debugLines.push("");
+          debugLines.push("LLM answer:");
+          debugLines.push(String(data.llm_answer));
+        }
+        if (data.llm_raw_text) {
+          debugLines.push("");
+          debugLines.push("Raw LLM text:");
+          debugLines.push(String(data.llm_raw_text));
+        }
+        document.getElementById("query-debug").textContent = debugLines.join("\\n");
+        if (data.context_taxa && data.context_taxa.length > 0) {
+          document.getElementById("embedding-focus").value = data.context_taxa[0];
+        }
+      } catch (err) {
+        document.getElementById("query-answer").textContent = `Query failed: ${err.message}`;
+        document.getElementById("query-debug").textContent = `provider: ${provider}\\nerror: ${err.message}`;
+        handleBrowserError("Query", err);
       }
     }
 
@@ -1433,22 +1599,30 @@ HTML_PAGE = """<!doctype html>
       document.getElementById("graph-box").innerHTML = data.svg || "";
     }
 
-    document.getElementById("module-kind").addEventListener("change", loadModules);
-    document.getElementById("module-id").addEventListener("change", loadModules);
-    document.getElementById("super-threshold").addEventListener("change", loadSuperGraph);
-    document.getElementById("super-method").addEventListener("change", loadSuperGraph);
-    document.getElementById("link-threshold").addEventListener("change", loadLinks);
-    document.getElementById("link-method").addEventListener("change", loadLinks);
-    document.getElementById("link-relation").addEventListener("change", loadLinks);
-    document.getElementById("card-type").addEventListener("change", loadCards);
-    document.getElementById("card-threshold").addEventListener("change", loadCards);
-    document.getElementById("card-method").addEventListener("change", loadCards);
-    document.getElementById("card-relation").addEventListener("change", loadCards);
-    document.getElementById("report-select").addEventListener("change", loadReport);
+    bindEvent("module-kind", "change", loadModules);
+    bindEvent("module-id", "change", loadModules);
+    bindEvent("super-threshold", "change", loadSuperGraph);
+    bindEvent("super-method", "change", loadSuperGraph);
+    bindEvent("link-threshold", "change", loadLinks);
+    bindEvent("link-method", "change", loadLinks);
+    bindEvent("link-relation", "change", loadLinks);
+    bindEvent("card-type", "change", loadCards);
+    bindEvent("card-threshold", "change", loadCards);
+    bindEvent("card-method", "change", loadCards);
+    bindEvent("card-relation", "change", loadCards);
+    bindEvent("report-select", "change", loadReport);
+
+    window.addEventListener("error", (event) => {
+      handleBrowserError("Browser error", event.error || new Error(event.message || "Unknown browser error"));
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      handleBrowserError("Unhandled promise rejection", event.reason || new Error("Unknown promise rejection"));
+    });
 
     init().catch(err => {
       document.body.insertAdjacentHTML("afterbegin", `<div style="padding:16px;background:#7f1d1d;color:#fff">Browser failed to load: ${escapeHtml(err.message)}</div>`);
       console.error(err);
+      setBrowserStatus(`Browser failed to load: ${err.message}`, "error");
     });
   </script>
 </body>
@@ -1466,6 +1640,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         data = json.dumps(payload, default=normalize_value, indent=2, sort_keys=True).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -1474,6 +1650,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         data = text.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -1490,6 +1668,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/summary":
                 self.send_json(app.summary())
+                return
+            if path == "/api/health":
+                self.send_json(app.health())
                 return
             if path == "/api/cards":
                 rows = app.filter_cards(
@@ -1559,8 +1740,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if path == "/api/query":
                 query = params.get("query", [""])[0]
                 context_taxa = params.get("context_taxa", [""])[0]
+                llm_provider = params.get("llm_provider", [""])[0].strip() or None
                 taxa = [item.strip() for item in context_taxa.split(",") if item.strip()] if context_taxa else None
-                payload = app.query(query, context_taxa=taxa)
+                payload = app.query(query, context_taxa=taxa, llm_provider=llm_provider)
+                app.logger.info(
+                    "query provider=%s status=%s model=%s query=%s",
+                    payload.get("llm_provider", "local"),
+                    payload.get("llm_status", ""),
+                    payload.get("llm_model", ""),
+                    query[:160],
+                )
                 self.send_json(payload)
                 return
             if path == "/api/report":

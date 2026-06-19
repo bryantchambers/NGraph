@@ -377,6 +377,16 @@ def render_answer(result: dict) -> str:
         )
         if result.get("llm_model"):
             lines.append(f"- LLM model: `{result.get('llm_model')}`")
+    if result.get("llm_answer"):
+        lines.extend(["", "### LLM Synthesis", "", str(result["llm_answer"])])
+        if result.get("llm_evidence_ids"):
+            lines.extend(["", "#### LLM Evidence IDs", "", ", ".join(map(str, result["llm_evidence_ids"]))])
+        if result.get("llm_uncertainty"):
+            lines.extend(["", "#### LLM Uncertainty", "", str(result["llm_uncertainty"])])
+        if result.get("llm_followups"):
+            lines.extend(["", "#### Follow-ups", ""])
+            for item in result["llm_followups"]:
+                lines.append(f"- {item}")
     for line in result.get("answer_lines", []):
         lines.append(f"- {line}")
     retrieval_summary = result.get("retrieval_summary") or {}
@@ -402,16 +412,6 @@ def render_answer(result: dict) -> str:
         lines.extend(["", "### Top Taxa", "", format_table(result["top_taxa"])])
     if "link_hits" in result and isinstance(result["link_hits"], pd.DataFrame) and len(result["link_hits"]) > 0:
         lines.extend(["", "### Top Predicted Links", "", format_table(result["link_hits"])])
-    if result.get("llm_answer"):
-        lines.extend(["", "### Gemini Synthesis", "", str(result["llm_answer"])])
-        if result.get("llm_evidence_ids"):
-            lines.extend(["", "#### Gemini Evidence IDs", "", ", ".join(map(str, result["llm_evidence_ids"]))])
-        if result.get("llm_uncertainty"):
-            lines.extend(["", "#### Gemini Uncertainty", "", str(result["llm_uncertainty"])])
-        if result.get("llm_followups"):
-            lines.extend(["", "#### Follow-ups", ""])
-            for item in result["llm_followups"]:
-                lines.append(f"- {item}")
     if "capability_tables" in result:
         for key, table in result["capability_tables"].items():
             if table is None or len(table) == 0:
@@ -432,7 +432,12 @@ def choose_query_type(query: str) -> str:
     return "general"
 
 
-def run_query(query: str, data: dict, context_taxa: Optional[List[str]] = None) -> dict:
+def run_query(
+    query: str,
+    data: dict,
+    context_taxa: Optional[List[str]] = None,
+    llm_provider: Optional[str] = None,
+) -> dict:
     qtype = choose_query_type(query)
     if qtype == "seeding":
         base = build_seed_answer(query, data)
@@ -448,7 +453,7 @@ def run_query(query: str, data: dict, context_taxa: Optional[List[str]] = None) 
             "semantic_hits": semantic_context(data["cards"], data["card_matrix"], data["vectorizer"], query, top_k=10),
             "context_taxa": [],
         }
-    return augment_result(query, base, data, top_k=10)
+    return augment_result(query, base, data, top_k=10, llm_provider=llm_provider)
 
 
 def main() -> int:
@@ -456,6 +461,7 @@ def main() -> int:
     parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "abundance_thresholding"))
     parser.add_argument("--query", default=None, help="Run a single natural-language query")
     parser.add_argument("--question-file", default=None, help="Optional text file with one query per line")
+    parser.add_argument("--llm-provider", default=os.environ.get("NG_LLM_PROVIDER", "local"), help="LLM provider override: local or gemini")
     parser.add_argument("--top-k", type=int, default=10)
     args = parser.parse_args()
 
@@ -487,7 +493,7 @@ def main() -> int:
     ]
 
     for idx, query in enumerate(questions, start=1):
-        result = run_query(query, data, context_taxa=context_taxa)
+        result = run_query(query, data, context_taxa=context_taxa, llm_provider=args.llm_provider)
         context_taxa = result.get("context_taxa") or context_taxa
         result["query_id"] = idx
         answers.append(result)
@@ -527,6 +533,7 @@ def main() -> int:
 
     manifest = {
         "branch": args.branch,
+        "llm_provider": args.llm_provider,
         "seed": SEED,
         "questions": questions,
         "results_jsonl": str(results_jsonl),

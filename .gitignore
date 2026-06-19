@@ -2,3 +2,5 @@ data/raw/dmg-summary-ssp-damage-classification-depositional.tsv.gz
 data/raw/*.gz
 
 data/raw/*.gz
+.env
+.env.local

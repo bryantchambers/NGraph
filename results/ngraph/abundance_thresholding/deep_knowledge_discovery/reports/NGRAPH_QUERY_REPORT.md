@@ -1,6 +1,6 @@
 # NGraph Natural-Language Query Report
 
-- Generated: 2026-06-19 12:25:26 UTC
+- Generated: 2026-06-19 12:34:58 UTC
 - Seed: `42`
 - Branch: `abundance_thresholding`
 
@@ -10,9 +10,8 @@
 
 ## What taxa work together to transition from glacial to interglacial periods?
 
-- LLM provider: `gemini`
-- LLM status: `missing_key`
-- LLM model: `gemini-3.1-flash-lite`
+- LLM provider: `local`
+- LLM status: `fallback_only`
 - The strongest transition-linked taxa are the taxa whose abundance shifts most between the two MIS bins, with predicted links used as a second-pass filter.
 - Binary MIS split used here: 4.384 (lower <= split, higher > split).
 - The most plausible co-working pairs are the high-scoring predicted links that sit inside the top differential taxa set.

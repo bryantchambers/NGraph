@@ -1,5 +1,6 @@
 {
   "branch": "abundance_thresholding",
+  "llm_provider": "local",
   "questions": [
     "What taxa work together to transition from glacial to interglacial periods?"
   ],
