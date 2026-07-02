@@ -1,5 +1,5 @@
-[2026-06-15 16:58:00] Writing deep-module summary 
-[2026-06-15 16:58:00] Package versions: data.table 1.17.8, ggplot2 4.0.3 
-[2026-06-15 16:58:02] Method Validated: deep-module summary plot written 
-[2026-06-15 16:58:02] Summary report written: /src/results/ngraph/abundance_thresholding/deep_modules/reports/NGRAPH_DEEP_MODULE_SUMMARY.md 
-[2026-06-15 16:58:02] Complete 
+[2026-06-24 16:07:48] Writing deep-module summary 
+[2026-06-24 16:07:48] Package versions: data.table 1.17.8, ggplot2 4.0.3 
+[2026-06-24 16:07:49] Method Validated: deep-module summary plot written 
+[2026-06-24 16:07:49] Summary report written: /src/results/ngraph/permissive_hybrid_prev10/deep_modules/reports/NGRAPH_DEEP_MODULE_SUMMARY.md 
+[2026-06-24 16:07:49] Complete 

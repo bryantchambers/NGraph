@@ -99,6 +99,15 @@ def join_text(row: pd.Series, cols: List[str]) -> str:
     return " ".join(parts)
 
 
+def primary_threshold_label() -> str:
+    label = os.environ.get("NG_PRIMARY_THRESHOLD_LABEL")
+    if label:
+        return label
+    raw = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_THRESHOLD", os.environ.get("NG_PRIMARY_THRESHOLD", "5"))
+    raw = raw.replace("prev_", "")
+    return f"prev_{raw}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "abundance_thresholding"))
@@ -127,9 +136,9 @@ def main() -> int:
         pickle.dump(vectorizer, handle)
     cards.drop(columns=["card_text"]).to_csv(discovery_dir / "indexes" / "card_index.tsv", sep="\t", index=False)
 
-    primary_thr = 5
-    primary_method = "pearson"
-    embedding_path = combo_root(args.branch, f"prev_{primary_thr}", primary_method, kind="deep_modules") / "tables" / "vgae_embeddings.tsv"
+    primary_thr = primary_threshold_label()
+    primary_method = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_METHOD", os.environ.get("NG_PRIMARY_METHOD", "pearson"))
+    embedding_path = combo_root(args.branch, primary_thr, primary_method, kind="deep_modules") / "tables" / "vgae_embeddings.tsv"
     if not embedding_path.exists():
         raise SystemExit(f"Missing VGAE embeddings: {embedding_path}. Run step 07 first.")
 

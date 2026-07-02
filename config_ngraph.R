@@ -7,6 +7,64 @@ BASE <- normalizePath(getwd(), mustWork = TRUE)
 
 NG_BRANCH <- Sys.getenv("NG_BRANCH", "abundance_thresholding")
 
+env_flag <- function(name, default = FALSE) {
+  raw <- Sys.getenv(name, unset = "")
+  if (!nzchar(raw)) return(default)
+  val <- tolower(trimws(raw))
+  if (val %in% c("1", "true", "t", "yes", "y", "on")) return(TRUE)
+  if (val %in% c("0", "false", "f", "no", "n", "off")) return(FALSE)
+  warning(sprintf("Unrecognized boolean env var %s='%s'; using default=%s", name, raw, default))
+  default
+}
+
+env_csv <- function(name, default = character()) {
+  raw <- Sys.getenv(name, unset = "")
+  if (!nzchar(raw)) return(default)
+  vals <- trimws(unlist(strsplit(raw, ",", fixed = TRUE)))
+  vals <- vals[nzchar(vals)]
+  unique(vals)
+}
+
+env_string <- function(name, default = "") {
+  raw <- Sys.getenv(name, unset = "")
+  if (!nzchar(raw)) return(default)
+  trimws(raw)
+}
+
+env_numeric <- function(name, default) {
+  raw <- Sys.getenv(name, unset = "")
+  if (!nzchar(raw)) return(default)
+  val <- suppressWarnings(as.numeric(raw))
+  if (!is.finite(val)) {
+    warning(sprintf("Unrecognized numeric env var %s='%s'; using default=%s", name, raw, as.character(default)))
+    return(default)
+  }
+  val
+}
+
+env_integer <- function(name, default) {
+  val <- env_numeric(name, default = default)
+  if (!is.finite(val)) return(default)
+  as.integer(round(val))
+}
+
+env_integer_csv <- function(name, default = integer()) {
+  raw <- env_csv(name, default = character())
+  if (length(raw) == 0) return(default)
+  vals <- suppressWarnings(as.integer(raw))
+  vals <- vals[is.finite(vals)]
+  unique(vals)
+}
+
+env_choice <- function(name, choices, default) {
+  raw <- tolower(env_string(name, default = default))
+  if (!raw %in% choices) {
+    warning(sprintf("Unrecognized %s='%s'; using default='%s'", name, raw, default))
+    return(default)
+  }
+  raw
+}
+
 ROCS <- list(
   base = file.path(BASE, "Source", "ROCS"),
   stage1 = file.path(BASE, "Source", "ROCS", "results", "stage1"),
@@ -34,6 +92,7 @@ NG <- list(
   results = file.path(BASE, "results", "ngraph", NG_BRANCH),
   deep_modules = file.path(BASE, "results", "ngraph", NG_BRANCH, "deep_modules"),
   deep_knowledge = file.path(BASE, "results", "ngraph", NG_BRANCH, "deep_knowledge_discovery"),
+  kg = file.path(BASE, "results", "ngraph", NG_BRANCH, "knowledge_graph"),
   matrices = file.path(BASE, "results", "ngraph", NG_BRANCH, "matrices"),
   tables = file.path(BASE, "results", "ngraph", NG_BRANCH, "tables"),
   figures = file.path(BASE, "results", "ngraph", NG_BRANCH, "figures"),
@@ -49,6 +108,20 @@ for (d in c(
   dir.create(d, recursive = TRUE, showWarnings = FALSE)
 }
 
+ng_kg_dirs <- function() {
+  dirs <- list(
+    root = NG$kg,
+    tables = file.path(NG$kg, "tables"),
+    reports = file.path(NG$kg, "reports"),
+    figures = file.path(NG$kg, "figures"),
+    logs = file.path(NG$kg, "logs")
+  )
+  for (d in dirs) {
+    dir.create(d, recursive = TRUE, showWarnings = FALSE)
+  }
+  dirs
+}
+
 NG_PARAMS <- list(
   seed = 42L,
   max_age_kyr = 150,
@@ -58,16 +131,21 @@ NG_PARAMS <- list(
   excluded_samples = c("LV3003046968"),
   abundance_column = "tax_abund_tad",
   raw_read_column = "n_reads",
+  abundance_mode = env_choice("NG_ABUNDANCE_MODE", choices = c("tad_only", "hybrid_tad_then_read"), default = "tad_only"),
+  min_reads_gate = env_integer("NG_MIN_READS_GATE", default = 0L),
   clr_pseudocount = 0.5,
-  prevalence_thresholds = c(3L, 5L, 10L),
+  prevalence_thresholds = {
+    thr <- env_integer_csv("NG_PREVALENCE_THRESHOLDS", default = c(3L, 5L, 10L))
+    if (length(thr) == 0) c(3L, 5L, 10L) else thr
+  },
   site_graph_methods = c("pearson", "bicor", "spearman", "mi_aracne"),
   deep_module_methods = c("pearson", "bicor", "spearman", "mi_aracne"),
-  deep_module_primary_threshold = 5L,
-  deep_module_primary_method = "pearson",
+  deep_module_primary_threshold = env_integer("NG_PRIMARY_THRESHOLD", default = 5L),
+  deep_module_primary_method = env_string("NG_PRIMARY_METHOD", default = "pearson"),
   deep_module_validation_core = "GeoB25202_R2",
   deep_knowledge_methods = c("pearson", "bicor", "spearman", "mi_aracne"),
-  deep_knowledge_primary_threshold = 5L,
-  deep_knowledge_primary_method = "pearson",
+  deep_knowledge_primary_threshold = env_integer("NG_DEEP_KNOWLEDGE_PRIMARY_THRESHOLD", default = env_integer("NG_PRIMARY_THRESHOLD", default = 5L)),
+  deep_knowledge_primary_method = env_string("NG_DEEP_KNOWLEDGE_PRIMARY_METHOD", default = env_string("NG_PRIMARY_METHOD", default = "pearson")),
   deep_knowledge_validation_core = "GeoB25202_R2",
   deep_knowledge_top_n = 100L,
   retrieval_top_k = 20L,

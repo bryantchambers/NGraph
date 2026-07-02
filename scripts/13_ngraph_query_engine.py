@@ -68,6 +68,15 @@ def threshold_root(branch: str, threshold: str) -> Path:
     return project_root() / "results" / "ngraph" / branch / threshold
 
 
+def primary_threshold_label() -> str:
+    label = os.environ.get("NG_PRIMARY_THRESHOLD_LABEL")
+    if label:
+        return label
+    raw = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_THRESHOLD", os.environ.get("NG_PRIMARY_THRESHOLD", "5"))
+    raw = raw.replace("prev_", "")
+    return f"prev_{raw}"
+
+
 def setup_logger(log_path: Path) -> logging.Logger:
     ensure_dirs(log_path.parent)
     logger = logging.getLogger(log_path.stem)
@@ -146,9 +155,11 @@ def load_inputs(branch: str):
     nn_index = pickle.load((discovery_dir / "indexes" / "vgae_nearest_neighbors.pkl").open("rb"))
     sample_abundance = pd.read_csv(discovery_dir / "tables" / "sample_taxon_abundance_long.tsv", sep="\t")
     sample_clr = pd.read_csv(discovery_dir / "tables" / "sample_taxon_clr_long.tsv", sep="\t")
-    sample_qc = pd.read_csv(threshold_root(branch, "prev_5") / "tables" / "ngraph_sample_qc.tsv", sep="\t")
-    taxon_nodes = pd.read_csv(combo_root(branch, "prev_5", "pearson", kind="deep_modules") / "tables" / "hetero_taxon_nodes.tsv", sep="\t")
-    site_nodes = pd.read_csv(combo_root(branch, "prev_5", "pearson", kind="deep_modules") / "tables" / "hetero_site_nodes.tsv", sep="\t")
+    primary_threshold = primary_threshold_label()
+    primary_method = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_METHOD", os.environ.get("NG_PRIMARY_METHOD", "pearson"))
+    sample_qc = pd.read_csv(threshold_root(branch, primary_threshold) / "tables" / "ngraph_sample_qc.tsv", sep="\t")
+    taxon_nodes = pd.read_csv(combo_root(branch, primary_threshold, primary_method, kind="deep_modules") / "tables" / "hetero_taxon_nodes.tsv", sep="\t")
+    site_nodes = pd.read_csv(combo_root(branch, primary_threshold, primary_method, kind="deep_modules") / "tables" / "hetero_site_nodes.tsv", sep="\t")
     link_prediction = read_table(discovery_dir / "link_prediction_top_candidates.tsv")
     return {
         "cards": cards,

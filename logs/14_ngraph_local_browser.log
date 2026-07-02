@@ -1,19 +1,53 @@
-[2026-06-19 16:49:04] Starting local browser
-[2026-06-19 16:49:04] Seed: 42
-[2026-06-19 16:49:04] Host: 0.0.0.0 Port: 10298
-[2026-06-19 16:49:08] Browser ready: http://0.0.0.0:10298
-[2026-06-19 16:49:14] 127.0.0.1 - "GET /api/health HTTP/1.1" 200 -
-[2026-06-19 16:49:17] query provider=gemini status=ok model=gemini-3.1-flash-lite query=What taxa work together to transition from glacial to interglacial periods?
-[2026-06-19 16:49:17] 127.0.0.1 - "GET /api/query?query=What%20taxa%20work%20together%20to%20transition%20from%20glacial%20to%20interglacial%20periods%3F&llm_provider=gemini HTTP/1.1" 200 -
-[2026-06-19 16:49:57] 127.0.0.1 - "GET / HTTP/1.1" 200 -
-[2026-06-19 16:49:57] 127.0.0.1 - "GET /api/summary HTTP/1.1" 200 -
-[2026-06-19 16:49:57] 127.0.0.1 - "GET /api/supergraph?threshold=prev_5&method=pearson HTTP/1.1" 200 -
-[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/cards?query=&card_type=&threshold=&method=&relation_type=&limit=80 HTTP/1.1" 200 -
-[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/report?name=NGRAPH_DEEP_KNOWLEDGE_DISCOVERY_REPORT.md HTTP/1.1" 200 -
-[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/embedding?focus= HTTP/1.1" 200 -
-[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/modules?threshold=prev_5&method=pearson&kind=vgae&module_id=&limit=60 HTTP/1.1" 200 -
-[2026-06-19 16:49:58] 127.0.0.1 - "GET /api/links?threshold=prev_5&method=pearson&relation_type=&focus=&limit=80 HTTP/1.1" 200 -
-[2026-06-19 16:50:00] query provider=gemini status=ok model=gemini-3.1-flash-lite query=What taxa work together to transition from glacial to interglacial periods?
-[2026-06-19 16:50:00] 127.0.0.1 - "GET /api/query?query=What+taxa+work+together+to+transition+from+glacial+to+interglacial+periods%3F&llm_provider=gemini HTTP/1.1" 200 -
-[2026-06-19 16:50:07] query provider=gemini status=ok model=gemini-3.1-flash-lite query=What taxa work together to transition from glacial to interglacial periods?
-[2026-06-19 16:50:07] 127.0.0.1 - "GET /api/query?query=What+taxa+work+together+to+transition+from+glacial+to+interglacial+periods%3F&llm_provider=gemini HTTP/1.1" 200 -
+[2026-07-01 15:51:06] Starting local browser
+[2026-07-01 15:51:06] Seed: 42
+[2026-07-01 15:51:06] Host: 0.0.0.0 Port: 10298
+[2026-07-01 15:51:20] Browser ready: http://0.0.0.0:10298
+[2026-07-01 16:00:38] 127.0.0.1 - "GET /kg HTTP/1.1" 200 -
+[2026-07-01 16:00:38] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-01 16:00:41] 127.0.0.1 - "GET /kg/explore HTTP/1.1" 200 -
+[2026-07-01 16:00:41] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-01 16:00:41] 127.0.0.1 - "GET /api/kg/neighborhood?id=&depth=1&edge_type=&node_type=&limit=150 HTTP/1.1" 200 -
+[2026-07-01 16:00:42] 127.0.0.1 - "GET /api/kg/node?id=site%3AST5 HTTP/1.1" 200 -
+[2026-07-01 16:00:47] 127.0.0.1 - "GET /api/kg/neighborhood?id=&depth=1&edge_type=&node_type=&limit=150 HTTP/1.1" 200 -
+[2026-07-01 16:00:47] 127.0.0.1 - "GET /api/kg/node?id=site%3AST5 HTTP/1.1" 200 -
+[2026-07-01 16:01:09] 127.0.0.1 - "GET /kg HTTP/1.1" 200 -
+[2026-07-01 16:01:09] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-01 16:01:17] 127.0.0.1 - "GET / HTTP/1.1" 200 -
+[2026-07-01 16:01:18] 127.0.0.1 - "GET /api/summary HTTP/1.1" 200 -
+[2026-07-01 16:01:18] 127.0.0.1 - "GET /api/supergraph?threshold=prev_10&method=pearson HTTP/1.1" 200 -
+[2026-07-01 16:01:18] 127.0.0.1 - "GET /api/cards?query=&card_type=&threshold=&method=&relation_type=&limit=80 HTTP/1.1" 200 -
+[2026-07-01 16:01:18] 127.0.0.1 - "GET /api/report?name=NGRAPH_DEEP_KNOWLEDGE_DISCOVERY_REPORT.md HTTP/1.1" 200 -
+[2026-07-01 16:01:20] 127.0.0.1 - "GET /api/embedding?focus= HTTP/1.1" 200 -
+[2026-07-01 16:01:22] 127.0.0.1 - "GET /api/kg?site=&taxon=&limit=60 HTTP/1.1" 200 -
+[2026-07-01 16:01:30] 127.0.0.1 - "GET /api/kg?site=&taxon=&limit=60 HTTP/1.1" 200 -
+[2026-07-01 16:01:41] 127.0.0.1 - "GET /api/modules?threshold=prev_10&method=pearson&kind=vgae&module_id=&limit=60 HTTP/1.1" 200 -
+[2026-07-01 16:01:46] 127.0.0.1 - "GET /api/links?threshold=prev_10&method=pearson&relation_type=&focus=&limit=80 HTTP/1.1" 200 -
+[2026-07-01 16:01:53] query provider=gemini status=ok model=gemini-3.1-flash-lite query=What taxa work together to transition from glacial to interglacial periods?
+[2026-07-01 16:01:53] 127.0.0.1 - "GET /api/query?query=What+taxa+work+together+to+transition+from+glacial+to+interglacial+periods%3F&llm_provider=gemini HTTP/1.1" 200 -
+[2026-07-01 16:07:06] 127.0.0.1 - "GET /kg HTTP/1.1" 200 -
+[2026-07-01 16:07:06] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-01 16:07:32] 127.0.0.1 - "GET /kg/paths HTTP/1.1" 200 -
+[2026-07-01 16:07:32] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-01 16:07:36] 127.0.0.1 - "GET /kg/explore HTTP/1.1" 200 -
+[2026-07-01 16:07:36] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-01 16:07:37] 127.0.0.1 - "GET /api/kg/neighborhood?id=&depth=1&edge_type=&node_type=&limit=150 HTTP/1.1" 200 -
+[2026-07-01 16:07:37] 127.0.0.1 - "GET /api/kg/node?id=site%3AST5 HTTP/1.1" 200 -
+[2026-07-01 16:07:51] 127.0.0.1 - "GET /api/kg/node?id=LV7001897508 HTTP/1.1" 200 -
+[2026-07-01 16:07:51] 127.0.0.1 - "GET /api/kg/node?id=LV7001897508 HTTP/1.1" 200 -
+[2026-07-01 16:13:43] 127.0.0.1 - "GET /api/kg/node?id=LV7001898075 HTTP/1.1" 200 -
+[2026-07-02 08:48:28] 127.0.0.1 - "GET /kg/explore HTTP/1.1" 200 -
+[2026-07-02 08:48:28] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-02 08:48:28] 127.0.0.1 - "GET /api/kg/neighborhood?id=&depth=1&edge_type=&node_type=&limit=150 HTTP/1.1" 200 -
+[2026-07-02 08:48:28] 127.0.0.1 - "GET /api/kg/node?id=site%3AST5 HTTP/1.1" 200 -
+[2026-07-02 08:48:43] 127.0.0.1 - "GET /api/kg/node?id=LV7001897529 HTTP/1.1" 200 -
+[2026-07-02 08:48:44] 127.0.0.1 - "GET /api/kg/node?id=LV7001897529 HTTP/1.1" 200 -
+[2026-07-02 09:00:25] 127.0.0.1 - "GET /api/kg/node?id=LV7001897509 HTTP/1.1" 200 -
+[2026-07-02 09:00:25] 127.0.0.1 - "GET /api/kg/node?id=LV7001897509 HTTP/1.1" 200 -
+[2026-07-02 09:05:08] 127.0.0.1 - "GET /kg/paths HTTP/1.1" 200 -
+[2026-07-02 09:05:08] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-02 09:05:09] 127.0.0.1 - "GET /kg/node HTTP/1.1" 200 -
+[2026-07-02 09:05:09] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-02 09:05:10] 127.0.0.1 - "GET /kg/downloads HTTP/1.1" 200 -
+[2026-07-02 09:05:10] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -
+[2026-07-02 09:05:15] 127.0.0.1 - "GET /kg HTTP/1.1" 200 -
+[2026-07-02 09:05:15] 127.0.0.1 - "GET /assets/vendor/cytoscape.min.js HTTP/1.1" 200 -

@@ -37,10 +37,22 @@ prok <- tax[
     label %in% meta$label
 ]
 
+if (is.finite(NG_PARAMS$min_reads_gate) && NG_PARAMS$min_reads_gate > 0L) {
+  prok <- prok[n_reads >= NG_PARAMS$min_reads_gate]
+}
+
 meta <- meta[label %in% unique(prok$label)]
 
+if (identical(NG_PARAMS$abundance_mode, "hybrid_tad_then_read")) {
+  prok[, abundance := ifelse(tax_abund_tad > 0, tax_abund_tad, tax_abund_read)]
+} else {
+  prok[, abundance := tax_abund_tad]
+}
+
 agg <- prok[, .(
-  abundance = sum(get(NG_PARAMS$abundance_column), na.rm = TRUE),
+  abundance = sum(abundance, na.rm = TRUE),
+  abundance_tad = sum(tax_abund_tad, na.rm = TRUE),
+  abundance_read = sum(tax_abund_read, na.rm = TRUE),
   n_reads = sum(n_reads, na.rm = TRUE),
   n_reads_tad = sum(n_reads_tad, na.rm = TRUE),
   tax_abund_read = sum(tax_abund_read, na.rm = TRUE),
@@ -77,22 +89,28 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
   }
 
   sample_totals <- dt[, .(
-    total_tax_abund_tad = sum(abundance, na.rm = TRUE),
-    detected_taxa_tad = sum(abundance > 0, na.rm = TRUE),
+    total_tax_abund_mode = sum(abundance, na.rm = TRUE),
+    detected_taxa_mode = sum(abundance > 0, na.rm = TRUE),
+    total_tax_abund_tad = sum(abundance_tad, na.rm = TRUE),
+    detected_taxa_tad = sum(abundance_tad > 0, na.rm = TRUE),
+    total_tax_abund_read = sum(abundance_read, na.rm = TRUE),
+    detected_taxa_read = sum(abundance_read > 0, na.rm = TRUE),
     total_n_reads = sum(n_reads, na.rm = TRUE),
     total_n_reads_tad = sum(n_reads_tad, na.rm = TRUE),
-    total_tax_abund_read = sum(tax_abund_read, na.rm = TRUE),
     total_tax_abund_aln = sum(tax_abund_aln, na.rm = TRUE)
   ), by = label]
   sample_qc <- merge(meta, sample_totals, by = "label", all.x = TRUE, sort = FALSE)
-  for (col in c("total_tax_abund_tad", "detected_taxa_tad", "total_n_reads",
-                "total_n_reads_tad", "total_tax_abund_read", "total_tax_abund_aln")) {
+  for (col in c("total_tax_abund_mode", "detected_taxa_mode", "total_tax_abund_tad", "detected_taxa_tad",
+                "total_tax_abund_read", "detected_taxa_read", "total_n_reads",
+                "total_n_reads_tad", "total_tax_abund_aln")) {
     sample_qc[is.na(get(col)), (col) := 0]
   }
   sample_qc[, threshold := thr]
   sample_qc[, `:=`(
     sample = label,
+    log_total_tax_abund_mode = log10(total_tax_abund_mode + 1),
     log_total_tax_abund_tad = log10(total_tax_abund_tad + 1),
+    log_total_tax_abund_read = log10(total_tax_abund_read + 1),
     log_total_n_reads = log10(total_n_reads + 1),
     log_total_n_reads_tad = log10(total_n_reads_tad + 1)
   )]
@@ -110,6 +128,8 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     threshold = thr,
     matrix = "ngraph_clr_global",
     abundance_column = NG_PARAMS$abundance_column,
+    abundance_mode = NG_PARAMS$abundance_mode,
+    min_reads_gate = NG_PARAMS$min_reads_gate,
     samples = nrow(clr),
     taxa = ncol(clr),
     pseudocount = NG_PARAMS$clr_pseudocount,

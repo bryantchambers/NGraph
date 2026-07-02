@@ -1,5 +1,5 @@
-[2026-06-19 14:16:54] Starting evidence card generation 
-[2026-06-19 14:16:54] Package versions: data.table 1.17.8, jsonlite 2.0.0 
-[2026-06-19 14:16:57] Method Validated: evidence cards and long-form context tables written 
-[2026-06-19 14:16:57] Report written: /src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/reports/NGRAPH_DEEP_KNOWLEDGE_DISCOVERY_REPORT.md 
-[2026-06-19 14:16:57] Complete 
+[2026-06-24 16:11:33] Starting evidence card generation 
+[2026-06-24 16:11:33] Package versions: data.table 1.17.8, jsonlite 2.0.0 
+[2026-06-24 16:11:42] Method Validated: evidence cards and long-form context tables written 
+[2026-06-24 16:11:42] Report written: /src/results/ngraph/permissive_hybrid_prev10/deep_knowledge_discovery/reports/NGRAPH_DEEP_KNOWLEDGE_DISCOVERY_REPORT.md 
+[2026-06-24 16:11:42] Complete 

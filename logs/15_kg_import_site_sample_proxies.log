@@ -1,0 +1,8 @@
+[2026-07-01 12:02:26] Starting KG import 
+[2026-07-01 12:02:26] Package versions: data.table 1.17.8, jsonlite 2.0.0 
+[2026-07-01 12:10:17] KG nodes: 34689 
+[2026-07-01 12:10:17] KG edges: 243387 
+[2026-07-01 12:10:17] KG measurements: 32150 
+[2026-07-01 12:10:17] KG ontology terms: 10 
+[2026-07-01 12:10:17] Method Validated: KG import artifacts written 
+[2026-07-01 12:10:17] Complete 

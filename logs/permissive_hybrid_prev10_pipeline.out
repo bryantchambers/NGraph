@@ -1,0 +1,105 @@
+Script started on 2026-06-24 16:01:27+02:00 [COMMAND="env NG_BRANCH=permissive_hybrid_prev10 NG_ABUNDANCE_MODE=hybrid_tad_then_read NG_MIN_READS_GATE=100 NG_PREVALENCE_THRESHOLDS=10 NG_PRIMARY_THRESHOLD=10 NG_PRIMARY_METHOD=pearson NG_PRIMARY_THRESHOLD_LABEL=prev_10 NG_DEEP_KNOWLEDGE_PRIMARY_THRESHOLD=10 NG_DEEP_KNOWLEDGE_PRIMARY_METHOD=pearson bash run_pipeline.sh --start 01" <not executed on terminal>]
+[16:01:27] === 01. CLR matrix isolation ===
+[2026-06-24 16:01:28] Starting NGraph abundance-threshold CLR matrix isolation
+[2026-06-24 16:01:34] Stage-1 aggregate: 4621 taxa x 214 samples
+[2026-06-24 16:01:35] Threshold 10: 214 samples x 1797 taxa
+[2026-06-24 16:01:35] Method Validated: abundance-threshold CLR matrices written
+[2026-06-24 16:01:35] Complete
+[16:01:35] === 02. Input QC ordination and PC correlations ===
+[?25h[?25h[?25h[?25h[?25h[2026-06-24 16:01:37] Starting NGraph input QC
+[?25h[?25h[?25h[2026-06-24 16:01:41] Threshold 10: QC plots and report written
+[?25h[?25h[?25h[2026-06-24 16:01:41] Method Validated: QC plots and reports written
+[?25h[2026-06-24 16:01:41] Complete
+[?25h[?25h[16:01:41] === 03. Site-specific taxon graphs ===
+[?25h[?25h[?25h[?25h[?25h[2026-06-24 16:01:42] Starting NGraph site graph construction
+[?25h[?25h[?25h[?25h[2026-06-24 16:01:46] minet available: 3.68.0
+[?25h[?25h[?25h[?25h[2026-06-24 16:01:48] Threshold 10 built ST8 PEARSON graph: 500 nodes, 3843 edges
+[2026-06-24 16:01:49] Threshold 10 built ST8 BICOR graph: 500 nodes, 8031 edges
+[2026-06-24 16:02:01] Threshold 10 built ST8 SPEARMAN graph: 500 nodes, 5017 edges
+[2026-06-24 16:02:01] Threshold 10 built ST8 MI/ARACNE graph: 500 nodes, 937 edges
+[2026-06-24 16:02:02] Threshold 10 built ST13 PEARSON graph: 500 nodes, 2078 edges
+[2026-06-24 16:02:02] Threshold 10 built ST13 BICOR graph: 500 nodes, 5039 edges
+[2026-06-24 16:02:10] Threshold 10 built ST13 SPEARMAN graph: 500 nodes, 3438 edges
+[2026-06-24 16:02:11] Threshold 10 built ST13 MI/ARACNE graph: 500 nodes, 1365 edges
+[2026-06-24 16:02:11] Threshold 10 built GeoB25202_R1 PEARSON graph: 500 nodes, 5529 edges
+[2026-06-24 16:02:12] Threshold 10 built GeoB25202_R1 BICOR graph: 500 nodes, 7810 edges
+[2026-06-24 16:02:19] Threshold 10 built GeoB25202_R1 SPEARMAN graph: 500 nodes, 8303 edges
+[2026-06-24 16:02:20] Threshold 10 built GeoB25202_R1 MI/ARACNE graph: 500 nodes, 1351 edges
+[2026-06-24 16:02:20] Threshold 10 built GeoB25202_R2 PEARSON graph: 500 nodes, 4578 edges
+[2026-06-24 16:02:21] Threshold 10 built GeoB25202_R2 BICOR graph: 500 nodes, 9016 edges
+[2026-06-24 16:02:30] Threshold 10 built GeoB25202_R2 SPEARMAN graph: 500 nodes, 7086 edges
+[2026-06-24 16:02:31] Threshold 10 built GeoB25202_R2 MI/ARACNE graph: 500 nodes, 1391 edges
+[?25h[?25h[2026-06-24 16:02:31] Method Validated: threshold-specific site graphs written
+[?25h[2026-06-24 16:02:31] Complete
+[?25h[?25h[16:02:31] === 04. Graph-of-graphs similarity network ===
+[?25h[?25h[?25h[?25h[?25h[2026-06-24 16:02:35] Starting graph-of-graphs construction
+[?25h[?25h[?25h[?25h[?25h[?25h[2026-06-24 16:02:45] Method Validated: threshold-specific graph-of-graphs outputs written
+[?25h[2026-06-24 16:02:45] Complete
+[?25h[?25h[16:02:45] === 05. NGraph summary ===
+[2026-06-24 16:02:46] Writing NGraph summary
+[2026-06-24 16:02:46] Summary written: /src/NGRAPH_SUMMARY_permissive_hybrid_prev10.md
+[2026-06-24 16:02:46] Complete
+[16:02:46] === 06. Heterograph export for deep modules ===
+[?25h[?25h[?25h[?25h[?25h[2026-06-24 16:02:49] Starting NGraph heterograph export
+[?25h[2026-06-24 16:02:49] Package versions: data.table 1.17.8, igraph 2.3.2, ggplot2 4.0.3, jsonlite 2.0.0
+[?25h[?25h[?25h[?25h[?25h[?25h[2026-06-24 16:02:52] Exported heterograph tables for prev_10/pearson: taxon nodes=1797, site nodes=4, taxon-taxon edges=16028, site-site edges=6, taxon-site edges=6815
+[2026-06-24 16:02:54] Exported heterograph tables for prev_10/bicor: taxon nodes=1797, site nodes=4, taxon-taxon edges=29896, site-site edges=6, taxon-site edges=6815
+[2026-06-24 16:02:55] Exported heterograph tables for prev_10/spearman: taxon nodes=1797, site nodes=4, taxon-taxon edges=23844, site-site edges=6, taxon-site edges=6815
+[2026-06-24 16:02:56] Exported heterograph tables for prev_10/mi_aracne: taxon nodes=1797, site nodes=4, taxon-taxon edges=5044, site-site edges=6, taxon-site edges=6815
+[?25h[?25h[?25h[2026-06-24 16:02:56] Method Validated: heterograph export tables written
+[?25h[2026-06-24 16:02:56] Complete
+[?25h[?25h[16:02:56] === 07. Heterograph VGAE/GAE training ===
+Training VGAE on prev_10/bicor
+/maps/projects/caeg/people/gfx654/miniforge3/envs/ngraph/lib/python3.14/site-packages/torch_geometric/data/hetero_data.py:573: UserWarning: There exist type names in the 'HeteroData' object that contain double underscores '__' (e.g., 'taxon_taxon__ST8__positive'). This may lead to unexpected behavior. To avoid any issues, ensure that your type names only contain single underscores.
+  warnings.warn(f"There exist type names in the "
+Training VGAE on prev_10/mi_aracne
+Training VGAE on prev_10/pearson
+Training VGAE on prev_10/spearman
+Validated VGAE runs written to /src/results/ngraph/permissive_hybrid_prev10/deep_modules/vgae_run_summary.tsv
+[16:06:17] === 08. Per-site DiffPool training ===
+Training DiffPool on prev_10/bicor
+Training DiffPool on prev_10/mi_aracne
+Training DiffPool on prev_10/pearson
+Training DiffPool on prev_10/spearman
+Validated DiffPool runs written to /src/results/ngraph/permissive_hybrid_prev10/deep_modules/diffpool_run_summary.tsv
+[16:07:47] === 09. Deep module summary ===
+[?25h[?25h[?25h[?25h[?25h[2026-06-24 16:07:48] Writing deep-module summary
+[?25h[2026-06-24 16:07:48] Package versions: data.table 1.17.8, ggplot2 4.0.3
+[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[?25h[2026-06-24 16:07:49] Method Validated: deep-module summary plot written
+[?25h[2026-06-24 16:07:49] Summary report written: /src/results/ngraph/permissive_hybrid_prev10/deep_modules/reports/NGRAPH_DEEP_MODULE_SUMMARY.md
+[?25h[2026-06-24 16:07:49] Complete
+[?25h[?25h[16:07:49] === 10. Learned link prediction ===
+[2026-06-24 16:07:51] Starting link prediction
+[2026-06-24 16:07:51] Seed: 42
+[2026-06-24 16:07:51] Package versions: numpy 2.4.6, pandas 2.3.3, sklearn 1.9.0
+[2026-06-24 16:08:43] prev_10/bicor taxon-taxon: 1587945 candidate pairs, holdout AUC 0.704
+[2026-06-24 16:08:46] prev_10/bicor taxon-site: 373 candidate pairs, holdout AUC 0.997
+[2026-06-24 16:09:36] prev_10/mi_aracne taxon-taxon: 1608887 candidate pairs, holdout AUC 0.738
+[2026-06-24 16:09:39] prev_10/mi_aracne taxon-site: 373 candidate pairs, holdout AUC 0.987
+[2026-06-24 16:10:32] prev_10/pearson taxon-taxon: 1600174 candidate pairs, holdout AUC 0.722
+[2026-06-24 16:10:35] prev_10/pearson taxon-site: 373 candidate pairs, holdout AUC 0.989
+[2026-06-24 16:11:28] prev_10/spearman taxon-taxon: 1593591 candidate pairs, holdout AUC 0.721
+[2026-06-24 16:11:31] prev_10/spearman taxon-site: 373 candidate pairs, holdout AUC 0.993
+[2026-06-24 16:11:31] Link prediction complete
+[2026-06-24 16:11:31] Report written: /src/results/ngraph/permissive_hybrid_prev10/deep_knowledge_discovery/reports/NGRAPH_LINK_PREDICTION_REPORT.md
+[16:11:32] === 11. Evidence card generation ===
+[2026-06-24 16:11:33] Starting evidence card generation
+[2026-06-24 16:11:33] Package versions: data.table 1.17.8, jsonlite 2.0.0
+[2026-06-24 16:11:42] Method Validated: evidence cards and long-form context tables written
+[2026-06-24 16:11:42] Report written: /src/results/ngraph/permissive_hybrid_prev10/deep_knowledge_discovery/reports/NGRAPH_DEEP_KNOWLEDGE_DISCOVERY_REPORT.md
+[2026-06-24 16:11:42] Complete
+[16:11:42] === 12. Local retrieval index ===
+[2026-06-24 16:11:46] Starting retrieval index build
+[2026-06-24 16:11:46] Seed: 42
+[2026-06-24 16:11:46] Package versions: numpy 2.4.6, pandas 2.3.3, scipy 1.17.1, sklearn 1.9.0
+[2026-06-24 16:11:47] Retrieval index complete
+[2026-06-24 16:11:47] Report written: /src/results/ngraph/permissive_hybrid_prev10/deep_knowledge_discovery/reports/NGRAPH_RETRIEVAL_INDEX_REPORT.md
+[16:11:48] === 13. Natural-language query engine ===
+[2026-06-24 16:11:52] Starting query engine
+[2026-06-24 16:11:52] Seed: 42
+[2026-06-24 16:11:52] Package versions: numpy 2.4.6, pandas 2.3.3, scipy 1.17.1, sklearn 1.9.0
+[2026-06-24 16:12:04] Query engine complete
+[2026-06-24 16:12:04] Report written: /src/results/ngraph/permissive_hybrid_prev10/deep_knowledge_discovery/reports/NGRAPH_QUERY_REPORT.md
+[16:12:05] === NGraph pipeline complete ===
+
+Script done on 2026-06-24 16:12:05+02:00 [COMMAND_EXIT_CODE="0"]

@@ -46,9 +46,10 @@ PIPELINE=(
   "08|Per-site DiffPool training|08_ngraph_train_diffpool.py"
   "09|Deep module summary|09_ngraph_deep_module_summary.R"
   "10|Learned link prediction|10_ngraph_link_prediction.py"
-  "11|Evidence card generation|11_ngraph_build_evidence_cards.py"
+  "11|Evidence card generation|11_ngraph_build_evidence_cards.R"
   "12|Local retrieval index|12_ngraph_build_retrieval_index.py"
   "13|Natural-language query engine|13_ngraph_query_engine.py"
+  "14|Knowledge graph import|15_kg_import_site_sample_proxies.R"
 )
 
 start_index=-1

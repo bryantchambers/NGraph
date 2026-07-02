@@ -23,6 +23,10 @@ def knowledge_root(branch: str) -> Path:
     return project_root() / "results" / "ngraph" / branch / "deep_knowledge_discovery"
 
 
+def kg_root(branch: str) -> Path:
+    return project_root() / "results" / "ngraph" / branch / "knowledge_graph"
+
+
 def combo_root(branch: str, threshold: str, method: str, kind: str = "knowledge") -> Path:
     base = knowledge_root(branch) if kind == "knowledge" else deep_modules_root(branch)
     return base / threshold / method
@@ -86,4 +90,3 @@ def normalize_threshold_label(label: str | int) -> str:
 def safe_slug(text: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9]+", "_", text.strip()).strip("_")
     return slug or "item"
-

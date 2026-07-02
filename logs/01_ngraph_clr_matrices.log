@@ -1,7 +1,5 @@
-[2026-06-12 17:30:19] Starting NGraph abundance-threshold CLR matrix isolation 
-[2026-06-12 17:30:24] Stage-1 aggregate: 4621 taxa x 214 samples 
-[2026-06-12 17:30:24] Threshold 3: 214 samples x 374 taxa 
-[2026-06-12 17:30:25] Threshold 5: 214 samples x 274 taxa 
-[2026-06-12 17:30:25] Threshold 10: 214 samples x 173 taxa 
-[2026-06-12 17:30:25] Method Validated: abundance-threshold CLR matrices written 
-[2026-06-12 17:30:25] Complete 
+[2026-06-24 16:01:28] Starting NGraph abundance-threshold CLR matrix isolation 
+[2026-06-24 16:01:34] Stage-1 aggregate: 4621 taxa x 214 samples 
+[2026-06-24 16:01:35] Threshold 10: 214 samples x 1797 taxa 
+[2026-06-24 16:01:35] Method Validated: abundance-threshold CLR matrices written 
+[2026-06-24 16:01:35] Complete 

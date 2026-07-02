@@ -40,8 +40,12 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
   )
   fwrite(variance, file.path(dirs$tables, "ngraph_input_pc_variance.tsv"), sep = "\t")
 
+  abundance_covars <- c("log_total_tax_abund_mode", "total_tax_abund_mode", "detected_taxa_mode")
+  if (!all(abundance_covars %in% names(scores))) {
+    abundance_covars <- c("log_total_tax_abund_tad", "total_tax_abund_tad", "detected_taxa_tad")
+  }
   covariates <- intersect(
-    c("log_total_tax_abund_tad", "total_tax_abund_tad", "detected_taxa_tad",
+    c(abundance_covars,
       "log_total_n_reads", "total_n_reads", "log_total_n_reads_tad",
       "library_concentration", "avg_leng_initial", "avg_len_derep", "age_kyr", "mis", "sst"),
     names(scores)
@@ -85,10 +89,13 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     theme_minimal(base_size = 11)
   ggsave(file.path(dirs$figures, "ngraph_ordination_by_raw_reads.png"), p_reads, width = 7.5, height = 5.4, dpi = 160)
 
-  p_abund <- ggplot(scores, aes(PC1, PC2, color = log_total_tax_abund_tad, shape = core)) +
+  abund_color <- if ("log_total_tax_abund_mode" %in% names(scores)) "log_total_tax_abund_mode" else "log_total_tax_abund_tad"
+  abund_label <- if ("log_total_tax_abund_mode" %in% names(scores)) "log10 mode" else "log10 TAD"
+  abund_title <- if ("log_total_tax_abund_mode" %in% names(scores)) "NGraph CLR ordination by selected abundance mode" else "NGraph CLR ordination by TAD abundance"
+  p_abund <- ggplot(scores, aes(PC1, PC2, color = .data[[abund_color]], shape = core)) +
     geom_point(size = 2.4, alpha = 0.9) +
     scale_color_viridis_c(option = "cividis") +
-    labs(title = paste("NGraph CLR ordination by TAD abundance: prevalence", thr), color = "log10 TAD", x = "PC1", y = "PC2") +
+    labs(title = paste(abund_title, "prevalence", thr), color = abund_label, x = "PC1", y = "PC2") +
     theme_minimal(base_size = 11)
   ggsave(file.path(dirs$figures, "ngraph_ordination_by_tad_abundance.png"), p_abund, width = 7.5, height = 5.4, dpi = 160)
 
@@ -109,7 +116,8 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
   cat("- Generated: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n", sep = "")
   cat("- Branch: `", NG$branch, "`\n", sep = "")
   cat("- Prevalence threshold: `", thr, "`\n", sep = "")
-  cat("- Feature abundance: `", NG_PARAMS$abundance_column, "`\n\n", sep = "")
+  cat("- Feature abundance: `", NG_PARAMS$abundance_column, "`\n", sep = "")
+  cat("- Abundance mode: `", NG_PARAMS$abundance_mode, "`\n\n", sep = "")
   cat("## Top PC Associations\n\n")
   cat(ng_md_table(top_assoc[, .(threshold, PC, covariate, covariate_class, pearson_r, spearman_rho)]))
   cat("\n## Core/Site R2\n\n")

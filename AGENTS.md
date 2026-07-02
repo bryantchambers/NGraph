@@ -190,6 +190,30 @@ Canonical copied inputs include:
   - `/src/NGRAPH_SUMMARY_abundance_thresholding.md`
   - `/src/WORKPLAN.md`
 
+## KG Objective (2026-07-01)
+
+The next project objective is to turn the current graph-of-graphs and deep discovery stack into a learnable paleo-ecosystem knowledge graph.
+
+The KG should center on:
+
+- site and core identity
+- sediment samples and local age grids
+- aeDNA taxa, OTUs, modules, and learned graph structure
+- proxy metadata and geochemical measurements
+- climate, depositional, and site-environment context
+- ontology-linked terms and typed relations
+- future gene, allele, BGC, pathway, and metabolite layers
+
+Implementation priority:
+
+1. import and normalize site/sample/proxy metadata
+2. define node types, edge predicates, provenance, and ontology mapping tables
+3. export branch-scoped KG artifacts in file-backed form
+4. add a browser tab for KG browsing and path exploration
+5. add learning and query layers after the KG substrate is stable
+
+This objective supersedes any narrower interpretation of the project as only an NGraph network-learning workflow. All future work should keep the KG schema and learnable-query direction in view.
+
 Run with:
 
 ```bash

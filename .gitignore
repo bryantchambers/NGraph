@@ -4,3 +4,8 @@ data/raw/*.gz
 data/raw/*.gz
 .env
 .env.local
+
+results/ngraph/
+ LEARNING_AND_NOTES/SMDB_*.tsv
+ LEARNING_AND_NOTES/SMDB_*.csv
+ LEARNING_AND_NOTES/SMDB_*.zip

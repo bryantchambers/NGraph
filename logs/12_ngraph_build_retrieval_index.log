@@ -1,5 +1,5 @@
-[2026-06-19 14:17:01] Starting retrieval index build
-[2026-06-19 14:17:01] Seed: 42
-[2026-06-19 14:17:01] Package versions: numpy 2.4.6, pandas 2.3.3, scipy 1.17.1, sklearn 1.9.0
-[2026-06-19 14:17:02] Retrieval index complete
-[2026-06-19 14:17:02] Report written: /src/results/ngraph/abundance_thresholding/deep_knowledge_discovery/reports/NGRAPH_RETRIEVAL_INDEX_REPORT.md
+[2026-06-24 16:11:46] Starting retrieval index build
+[2026-06-24 16:11:46] Seed: 42
+[2026-06-24 16:11:46] Package versions: numpy 2.4.6, pandas 2.3.3, scipy 1.17.1, sklearn 1.9.0
+[2026-06-24 16:11:47] Retrieval index complete
+[2026-06-24 16:11:47] Report written: /src/results/ngraph/permissive_hybrid_prev10/deep_knowledge_discovery/reports/NGRAPH_RETRIEVAL_INDEX_REPORT.md

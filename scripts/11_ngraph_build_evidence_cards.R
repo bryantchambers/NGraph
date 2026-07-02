@@ -95,6 +95,8 @@ if (is.null(primary_taxon_nodes) || is.null(primary_site_nodes) || is.null(prima
 
 sample_cards <- copy(primary_sample_qc)
 if ("threshold" %in% names(sample_cards)) sample_cards[, threshold := NULL]
+mode_abund_col <- if ("total_tax_abund_mode" %in% names(sample_cards)) "total_tax_abund_mode" else "total_tax_abund_tad"
+mode_detected_col <- if ("detected_taxa_mode" %in% names(sample_cards)) "detected_taxa_mode" else "detected_taxa_tad"
 sample_cards[, `:=`(
   card_id = paste0("sample::", label),
   card_type = "sample",
@@ -102,8 +104,8 @@ sample_cards[, `:=`(
   title = paste0("Sample ", label, " from ", core),
   summary = paste0(
     "Sample ", label, " in core ", core, " at ", fmt_num(age_kyr, 1), " kya; MIS ", fmt_num(mis, 1),
-    ", SST ", fmt_num(sst, 2), ", total TAD abundance ", fmt_num(total_tax_abund_tad, 2),
-    ", detected taxa ", detected_taxa_tad, ", total reads ", total_n_reads
+    ", SST ", fmt_num(sst, 2), ", total abundance ", fmt_num(get(mode_abund_col), 2),
+    ", detected taxa ", get(mode_detected_col), ", total reads ", total_n_reads
   ),
   evidence = paste0(
     "Observed metadata from data/metadata/metadata_v5.tsv and stage-1 QC from ",

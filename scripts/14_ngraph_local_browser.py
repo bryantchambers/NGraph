@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import sys
+from collections import defaultdict, deque
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -25,14 +26,24 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from ngraph_discovery_common import combo_root, deep_modules_root, knowledge_root, read_json, read_table, safe_slug  # noqa: E402
+from ngraph_discovery_common import combo_root, deep_modules_root, kg_root, knowledge_root, read_json, read_table, safe_slug  # noqa: E402
 
 
 SEED = 42
 np.random.seed(SEED)
 
-PRIMARY_THRESHOLD = "prev_5"
-PRIMARY_METHOD = "pearson"
+
+def primary_threshold_label() -> str:
+    label = os.environ.get("NG_PRIMARY_THRESHOLD_LABEL")
+    if label:
+        return label
+    raw = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_THRESHOLD", os.environ.get("NG_PRIMARY_THRESHOLD", "5"))
+    raw = raw.replace("prev_", "")
+    return f"prev_{raw}"
+
+
+PRIMARY_THRESHOLD = primary_threshold_label()
+PRIMARY_METHOD = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_METHOD", os.environ.get("NG_PRIMARY_METHOD", "pearson"))
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
 
@@ -76,13 +87,28 @@ def optional_json(path: Path) -> dict:
 
 
 def normalize_value(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
     if isinstance(value, (np.integer, np.floating)):
         return value.item()
     if isinstance(value, np.ndarray):
         return value.tolist()
-    if pd.isna(value):
-        return None
     return value
+
+
+def json_ready(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): json_ready(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_ready(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [json_ready(item) for item in value.tolist()]
+    return normalize_value(value)
 
 
 def dataframe_records(df: pd.DataFrame, limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -110,12 +136,19 @@ def color_for_type(node_type: str) -> str:
     colors = {
         "taxon": "#2b8a3e",
         "site": "#1c7ed6",
+        "sample": "#0ca678",
         "module": "#f08c00",
+        "proxymasurement": "#f59f00",
+        "proxymeasurement": "#f59f00",
+        "proxyvariable": "#20c997",
+        "ontologyterm": "#868e96",
+        "dataset": "#adb5bd",
+        "analysisrun": "#e8590c",
         "super_site": "#7048e8",
         "focus": "#d9480f",
         "unknown": "#495057",
     }
-    return colors.get(node_type, colors["unknown"])
+    return colors.get(str(node_type).lower(), colors["unknown"])
 
 
 def ensure_numeric(series: pd.Series) -> pd.Series:
@@ -201,13 +234,14 @@ def build_svg_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], ti
 
     legend_x = 24
     legend_y = height - 28
-    for idx, (name, color) in enumerate([
-        ("taxon", color_for_type("taxon")),
-        ("site", color_for_type("site")),
-        ("module", color_for_type("module")),
-        ("focus", color_for_type("focus")),
-    ]):
-        x = legend_x + idx * 104
+    legend_types = ["taxon", "site", "sample", "module", "proxymeasurement", "proxyvariable", "dataset", "analysisrun", "ontologyterm", "focus"]
+    legend_items = []
+    present_types = {str(node.get("type", "unknown")).lower() for node in nodes}
+    for name in legend_types:
+        if name == "focus" or name in present_types:
+            legend_items.append((name, color_for_type(name)))
+    for idx, (name, color) in enumerate(legend_items[:6]):
+        x = legend_x + idx * 118
         parts.append(f"<circle cx='{x}' cy='{legend_y}' r='6' fill='{color}'/>")
         parts.append(f"<text x='{x + 12}' y='{legend_y + 4}' class='legend'>{name}</text>")
 
@@ -266,11 +300,21 @@ def load_text_table(path: Path) -> pd.DataFrame:
     return optional_table(path)
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None or (isinstance(value, float) and np.isnan(value)):
+            return default
+        return int(value)
+    except Exception:
+        return default
+
+
 class NGraphBrowser:
     def __init__(self, branch: str):
         self.branch = branch
         self.discovery_dir = knowledge_root(branch)
         self.deep_modules_dir = deep_modules_root(branch)
+        self.kg_dir = kg_root(branch)
         self.threshold_dir = PROJECT_ROOT / "results" / "ngraph" / branch / PRIMARY_THRESHOLD
         self.global_dir = PROJECT_ROOT / "results" / "ngraph"
         self.query_module = load_query_module()
@@ -303,6 +347,51 @@ class NGraphBrowser:
         self.discovery_manifest = optional_json(self.discovery_dir / "evidence_card_manifest.json")
         self.link_manifest = optional_json(self.discovery_dir / "link_prediction_manifest.json")
         self.retrieval_manifest = optional_json(self.discovery_dir / "retrieval_manifest.json")
+        self.kg_nodes = load_text_table(self.kg_dir / "tables" / "kg_nodes.tsv")
+        self.kg_edges = load_text_table(self.kg_dir / "tables" / "kg_edges.tsv")
+        self.kg_measurements = load_text_table(self.kg_dir / "tables" / "kg_measurements.tsv")
+        self.kg_ontology_terms = load_text_table(self.kg_dir / "tables" / "kg_ontology_terms.tsv")
+        self.kg_sites = load_text_table(self.kg_dir / "tables" / "kg_sites.tsv")
+        self.kg_datasets = load_text_table(self.kg_dir / "tables" / "kg_datasets.tsv")
+        self.kg_manifest = optional_json(self.kg_dir / "kg_manifest.json")
+        if not self.kg_nodes.empty and "node_id" in self.kg_nodes.columns:
+            self.kg_nodes["node_id"] = self.kg_nodes["node_id"].astype(str)
+        if not self.kg_edges.empty:
+            for col in ["edge_id", "source_id", "target_id", "edge_type"]:
+                if col in self.kg_edges.columns:
+                    self.kg_edges[col] = self.kg_edges[col].astype(str)
+        if not self.kg_measurements.empty and "node_id" in self.kg_measurements.columns:
+            self.kg_measurements["node_id"] = self.kg_measurements["node_id"].astype(str)
+        self.kg_node_ids = set(self.kg_nodes["node_id"].astype(str).tolist()) if not self.kg_nodes.empty and "node_id" in self.kg_nodes.columns else set()
+        self.kg_node_lookup = self.kg_nodes.set_index("node_id", drop=False) if not self.kg_nodes.empty and "node_id" in self.kg_nodes.columns else pd.DataFrame()
+        self.kg_edge_lookup = self.kg_edges.set_index("edge_id", drop=False) if not self.kg_edges.empty and "edge_id" in self.kg_edges.columns else pd.DataFrame()
+        self.kg_neighbors = defaultdict(list)
+        if not self.kg_edges.empty and {"source_id", "target_id"}.issubset(self.kg_edges.columns):
+            edge_cols = [c for c in ["edge_id", "edge_type", "source_id", "target_id", "weight", "value"] if c in self.kg_edges.columns]
+            for row in self.kg_edges[edge_cols].itertuples(index=False):
+                row_dict = row._asdict()
+                source = str(row_dict.get("source_id", ""))
+                target = str(row_dict.get("target_id", ""))
+                if not source or not target:
+                    continue
+                self.kg_neighbors[source].append(
+                    {
+                        "neighbor_id": target,
+                        "edge_id": row_dict.get("edge_id", ""),
+                        "edge_type": row_dict.get("edge_type", ""),
+                        "weight": row_dict.get("weight", row_dict.get("value", 1.0)),
+                        "direction": "out",
+                    }
+                )
+                self.kg_neighbors[target].append(
+                    {
+                        "neighbor_id": source,
+                        "edge_id": row_dict.get("edge_id", ""),
+                        "edge_type": row_dict.get("edge_type", ""),
+                        "weight": row_dict.get("weight", row_dict.get("value", 1.0)),
+                        "direction": "in",
+                    }
+                )
         self.all_similarity = load_text_table(PROJECT_ROOT / "results" / "ngraph" / branch / "tables" / "ngraph_all_threshold_graph_similarity.tsv")
         self.all_site_summary = load_text_table(PROJECT_ROOT / "results" / "ngraph" / branch / "tables" / "ngraph_all_threshold_site_graph_summary.tsv")
         self.super_nodes = load_text_table(PROJECT_ROOT / "results" / "ngraph" / "tables" / "ngraph_super_graph_nodes.tsv")
@@ -329,6 +418,9 @@ class NGraphBrowser:
         card_thresholds = sorted(self.cards["threshold"].dropna().astype(str).unique().tolist()) if not self.cards.empty and "threshold" in self.cards.columns else []
         card_methods = sorted(self.cards["method"].dropna().astype(str).unique().tolist()) if not self.cards.empty and "method" in self.cards.columns else []
         card_relations = sorted(self.cards["relation_type"].dropna().astype(str).unique().tolist()) if not self.cards.empty and "relation_type" in self.cards.columns else []
+        kg_node_types = sorted(self.kg_nodes["node_type"].dropna().astype(str).unique().tolist()) if not self.kg_nodes.empty and "node_type" in self.kg_nodes.columns else []
+        kg_edge_types = sorted(self.kg_edges["edge_type"].dropna().astype(str).unique().tolist()) if not self.kg_edges.empty and "edge_type" in self.kg_edges.columns else []
+        kg_sites = sorted(self.kg_sites["site_id"].dropna().astype(str).unique().tolist()) if not self.kg_sites.empty and "site_id" in self.kg_sites.columns else []
         reports = []
         for name in sorted((self.discovery_dir / "reports").glob("*.md")):
             reports.append({"name": name.name, "path": str(name)})
@@ -337,6 +429,7 @@ class NGraphBrowser:
             "evidence_cards": "complete" if not self.cards.empty else "missing",
             "retrieval_index": "complete" if self.card_matrix is not None else "missing",
             "query_engine": "complete" if not self.query_results.empty else "missing",
+            "knowledge_graph": "complete" if not self.kg_nodes.empty else "missing",
             "browser": "complete",
         }
         return {
@@ -357,6 +450,9 @@ class NGraphBrowser:
                 "sample_clr_rows": int(len(self.sample_clr)),
                 "query_results": int(len(self.query_results)),
                 "reports": int(len(reports)),
+                "kg_nodes": int(len(self.kg_nodes)),
+                "kg_edges": int(len(self.kg_edges)),
+                "kg_measurements": int(len(self.kg_measurements)),
             },
             "card_counts": dataframe_records(card_counts),
             "link_counts": dataframe_records(link_counts),
@@ -364,6 +460,9 @@ class NGraphBrowser:
             "card_thresholds": card_thresholds,
             "card_methods": card_methods,
             "card_relations": card_relations,
+            "kg_node_types": kg_node_types,
+            "kg_edge_types": kg_edge_types,
+            "kg_sites": kg_sites,
             "reports": reports,
             "phase_status": phase_status,
             "questions": list(self.query_module.CANONICAL_QUERIES),
@@ -782,6 +881,168 @@ class NGraphBrowser:
             "rows": dataframe_records(frame, limit=limit),
         }
 
+    def build_kg_payload(self, site: str = "", taxon: str = "", limit: int = 40) -> Dict[str, Any]:
+        nodes = self.kg_nodes.copy()
+        edges = self.kg_edges.copy()
+        if nodes.empty or edges.empty:
+            return {
+                "title": "Knowledge graph unavailable",
+                "svg": build_svg_graph([], [], "Knowledge graph unavailable"),
+                "nodes": [],
+                "edges": [],
+                "measurements": [],
+                "summary": [],
+            }
+
+        def site_node_id(value: str) -> str:
+            value = str(value).strip()
+            if not value:
+                return ""
+            return value if value.startswith("site:") else f"site:{value}"
+
+        def taxon_node_id(value: str) -> str:
+            value = str(value).strip()
+            if not value:
+                return ""
+            return value if value.startswith("taxon:") else f"taxon:{value}"
+
+        focus_site = site_node_id(site)
+        focus_taxon = taxon_node_id(taxon)
+        if not focus_site and not focus_taxon:
+            first_site = nodes.loc[nodes["node_type"].astype(str) == "Site", "node_id"].dropna().astype(str)
+            if len(first_site) > 0:
+                focus_site = str(first_site.iloc[0])
+
+        selected_ids = set()
+        if focus_site:
+            selected_ids.add(focus_site)
+        if focus_taxon:
+            selected_ids.add(focus_taxon)
+
+        def add_edges(mask: pd.Series, edge_limit: int = limit) -> pd.DataFrame:
+            frame = edges[mask].copy()
+            if frame.empty:
+                return frame
+            sort_cols = [c for c in ["weight", "value", "n_observations"] if c in frame.columns]
+            if sort_cols:
+                frame = frame.sort_values(sort_cols, ascending=False)
+            if edge_limit > 0:
+                frame = frame.head(edge_limit)
+            selected_ids.update(frame["source_id"].dropna().astype(str).tolist())
+            selected_ids.update(frame["target_id"].dropna().astype(str).tolist())
+            return frame
+
+        edge_chunks = []
+        if focus_site:
+            edge_chunks.append(add_edges((edges["edge_type"] == "site_has_sample") & (edges["source_id"].astype(str) == focus_site)))
+            sample_ids = edges.loc[(edges["edge_type"] == "site_has_sample") & (edges["source_id"].astype(str) == focus_site), "target_id"].dropna().astype(str).tolist()
+            if sample_ids:
+                selected_ids.update(sample_ids)
+                edge_chunks.append(add_edges((edges["edge_type"] == "sample_observed_taxon") & (edges["source_id"].astype(str).isin(sample_ids))))
+                edge_chunks.append(add_edges((edges["edge_type"] == "sample_has_measurement") & (edges["source_id"].astype(str).isin(sample_ids))))
+        if focus_taxon:
+            edge_chunks.append(add_edges((edges["edge_type"] == "sample_observed_taxon") & (edges["target_id"].astype(str) == focus_taxon)))
+            edge_chunks.append(add_edges((edges["edge_type"] == "taxon_member_of_module") & (edges["source_id"].astype(str) == focus_taxon)))
+            sample_ids = edges.loc[(edges["edge_type"] == "sample_observed_taxon") & (edges["target_id"].astype(str) == focus_taxon), "source_id"].dropna().astype(str).tolist()
+            if sample_ids:
+                selected_ids.update(sample_ids)
+                edge_chunks.append(add_edges((edges["edge_type"] == "sample_has_measurement") & (edges["source_id"].astype(str).isin(sample_ids))))
+        if selected_ids:
+            edge_chunks.append(add_edges(edges["source_id"].astype(str).isin(selected_ids) & edges["target_id"].astype(str).isin(selected_ids), edge_limit=2 * limit))
+
+        chunks = [chunk for chunk in edge_chunks if chunk is not None and not chunk.empty]
+        selected_edges = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+        if not selected_edges.empty:
+            selected_ids.update(selected_edges["source_id"].dropna().astype(str).tolist())
+            selected_ids.update(selected_edges["target_id"].dropna().astype(str).tolist())
+
+        selected_nodes = nodes[nodes["node_id"].astype(str).isin(selected_ids)].copy()
+        if selected_nodes.empty:
+            selected_nodes = nodes[nodes["node_type"].astype(str).isin(["Site", "Sample"])].head(limit).copy()
+            selected_ids.update(selected_nodes["node_id"].astype(str).tolist())
+            selected_edges = edges[edges["source_id"].astype(str).isin(selected_ids) & edges["target_id"].astype(str).isin(selected_ids)].head(2 * limit).copy()
+
+        graph_nodes = []
+        type_sizes = {
+            "site": 12.0,
+            "sample": 8.5,
+            "taxon": 7.5,
+            "module": 10.0,
+            "proxymasurement": 6.5,
+            "proxymeasurement": 6.5,
+            "proxyvariable": 6.5,
+            "dataset": 6.0,
+            "analysisrun": 6.0,
+            "ontologyterm": 6.0,
+        }
+        focus_ids = {focus_site, focus_taxon} - {""}
+        for _, row in selected_nodes.iterrows():
+            node_id = str(row.get("node_id", ""))
+            node_type = str(row.get("node_type", "unknown")).lower()
+            graph_nodes.append(
+                {
+                    "id": node_id,
+                    "label": str(row.get("label", node_id)),
+                    "type": node_type,
+                    "size": type_sizes.get(node_type, 7.0),
+                    "color": color_for_type(node_type),
+                    "highlight": node_id in focus_ids,
+                }
+            )
+
+        graph_edges = []
+        for _, row in selected_edges.iterrows():
+            source = str(row.get("source_id", ""))
+            target = str(row.get("target_id", ""))
+            if not source or not target:
+                continue
+            weight = row.get("weight", row.get("value", 0.5))
+            try:
+                weight = float(weight)
+            except Exception:
+                weight = 0.5
+            graph_edges.append({"source": source, "target": target, "weight": max(0.05, min(1.0, weight))})
+
+        if focus_site and not focus_taxon:
+            title = f"Knowledge graph around site {focus_site.replace('site:', '')}"
+        elif focus_taxon and not focus_site:
+            title = f"Knowledge graph around taxon {focus_taxon.replace('taxon:', '')}"
+        else:
+            title = "Knowledge graph overview"
+
+        svg = build_svg_graph(graph_nodes, graph_edges, title)
+        kg_measurements = self.kg_measurements.copy()
+        if "site_id" in kg_measurements.columns and focus_site:
+            kg_measurements = kg_measurements[kg_measurements["site_id"].astype(str) == focus_site.replace("site:", "")]
+        if "sample_id" in kg_measurements.columns and focus_taxon and not focus_site:
+            sample_ids = selected_edges.loc[selected_edges["edge_type"] == "sample_observed_taxon", "source_id"].dropna().astype(str).unique().tolist()
+            if sample_ids:
+                kg_measurements = kg_measurements[kg_measurements["sample_id"].astype(str).isin(sample_ids)]
+
+        return {
+            "title": title,
+            "focus_site": focus_site,
+            "focus_taxon": focus_taxon,
+            "svg": svg,
+            "nodes": dataframe_records(selected_nodes, limit=limit * 4),
+            "edges": dataframe_records(selected_edges, limit=limit * 4),
+            "measurements": dataframe_records(kg_measurements, limit=limit * 4),
+            "summary": dataframe_records(
+                pd.DataFrame(
+                    [
+                        ["KG nodes", len(self.kg_nodes)],
+                        ["KG edges", len(self.kg_edges)],
+                        ["KG measurements", len(self.kg_measurements)],
+                        ["Selected nodes", len(selected_nodes)],
+                        ["Selected edges", len(selected_edges)],
+                        ["Selected measurements", len(kg_measurements)],
+                    ],
+                    columns=["label", "value"],
+                ),
+                limit=20,
+            ),
+        }
+
     def query(self, query: str, context_taxa: Optional[List[str]] = None, llm_provider: Optional[str] = None) -> Dict[str, Any]:
         result = self.query_module.run_query(query, self.query_data, context_taxa=context_taxa, llm_provider=llm_provider)
         serializable = dict(result)
@@ -804,9 +1065,13 @@ class NGraphBrowser:
             "branch": self.branch,
             "project_root": str(PROJECT_ROOT),
             "discovery_dir": str(self.discovery_dir),
+            "kg_dir": str(self.kg_dir),
             "cards": int(len(self.cards)),
             "link_predictions": int(len(self.link_predictions)),
             "query_results": int(len(self.query_results)),
+            "kg_nodes": int(len(self.kg_nodes)),
+            "kg_edges": int(len(self.kg_edges)),
+            "kg_measurements": int(len(self.kg_measurements)),
             "llm_provider_default": provider,
             "gemini_key_present": api_key_present,
             "gemini_model": os.environ.get("NG_GEMINI_MODEL", "gemini-3.1-flash-lite"),
@@ -826,6 +1091,308 @@ class NGraphBrowser:
             raise FileNotFoundError(f"Unknown report: {name}")
         return path.read_text(encoding="utf-8")
 
+    def resolve_kg_node_id(self, value: str) -> str:
+        value = str(value or "").strip()
+        if not value:
+            return ""
+        if value in self.kg_node_ids:
+            return value
+        if not self.kg_nodes.empty and "label" in self.kg_nodes.columns:
+            label_matches = self.kg_nodes[self.kg_nodes["label"].astype(str).str.lower() == value.lower()]
+            if len(label_matches) == 1:
+                return str(label_matches.iloc[0]["node_id"])
+            contains_matches = self.kg_nodes[self.kg_nodes["label"].astype(str).str.contains(value, case=False, na=False, regex=False)]
+            if len(contains_matches) == 1:
+                return str(contains_matches.iloc[0]["node_id"])
+        return value if value.startswith(("site:", "sample:", "taxon:", "module:", "measurement:", "variable:", "dataset:", "analysis:", "ontology:")) else value
+
+    def kg_schema(self) -> Dict[str, Any]:
+        if self.kg_nodes.empty:
+            return {
+                "node_types": [],
+                "edge_types": [],
+                "metagraph": [],
+                "node_counts": [],
+                "edge_counts": [],
+                "sites": [],
+                "datasets": [],
+            }
+        node_counts = self.kg_nodes.groupby("node_type").size().sort_values(ascending=False).reset_index(name="count") if "node_type" in self.kg_nodes.columns else pd.DataFrame()
+        edge_counts = self.kg_edges.groupby("edge_type").size().sort_values(ascending=False).reset_index(name="count") if not self.kg_edges.empty and "edge_type" in self.kg_edges.columns else pd.DataFrame()
+        metagraph = pd.DataFrame()
+        if not self.kg_edges.empty and {"source_node_type", "edge_type", "target_node_type"}.issubset(self.kg_edges.columns):
+            metagraph = (
+                self.kg_edges.groupby(["source_node_type", "edge_type", "target_node_type"])
+                .size()
+                .sort_values(ascending=False)
+                .reset_index(name="count")
+            )
+        return {
+            "node_types": dataframe_records(node_counts, limit=len(node_counts)) if not node_counts.empty else [],
+            "edge_types": dataframe_records(edge_counts, limit=len(edge_counts)) if not edge_counts.empty else [],
+            "metagraph": dataframe_records(metagraph, limit=min(len(metagraph), 250)) if not metagraph.empty else [],
+            "sites": dataframe_records(self.kg_sites, limit=len(self.kg_sites)) if not self.kg_sites.empty else [],
+            "datasets": dataframe_records(self.kg_datasets, limit=len(self.kg_datasets)) if not self.kg_datasets.empty else [],
+            "manifest": self.kg_manifest,
+        }
+
+    def kg_search_nodes(self, query: str = "", node_type: str = "", limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        frame = self.kg_nodes.copy()
+        if frame.empty:
+            return {"rows": [], "total": 0, "query": query, "node_type": node_type, "offset": offset, "limit": limit}
+        if node_type and "node_type" in frame.columns:
+            frame = frame[frame["node_type"].astype(str).str.lower() == node_type.lower()]
+        q = str(query or "").strip()
+        if q:
+            text_cols = [c for c in ["node_id", "label", "node_type", "site_id", "taxon", "module_id", "variable", "ontology_prefix", "ontology_scope", "source_table"] if c in frame.columns]
+            blob = frame[text_cols].fillna("").astype(str).agg(" ".join, axis=1).str.lower()
+            tokens = [tok for tok in q.lower().split() if tok]
+            score = pd.Series(np.zeros(len(frame), dtype=float), index=frame.index)
+            if "node_id" in frame.columns:
+                score = score + (frame["node_id"].astype(str).str.lower() == q.lower()).astype(float) * 12.0
+                score = score + frame["node_id"].astype(str).str.lower().str.contains(q.lower(), regex=False, na=False).astype(float) * 6.0
+            if "label" in frame.columns:
+                score = score + (frame["label"].astype(str).str.lower() == q.lower()).astype(float) * 10.0
+                score = score + frame["label"].astype(str).str.lower().str.contains(q.lower(), regex=False, na=False).astype(float) * 5.0
+            for token in tokens:
+                score = score + blob.str.contains(token, regex=False, na=False).astype(float)
+            frame = frame.assign(search_score=score, search_blob=blob)
+            frame = frame[frame["search_score"] > 0].sort_values(["search_score", "label", "node_id"], ascending=[False, True, True])
+        else:
+            sort_cols = [c for c in ["node_type", "label", "node_id"] if c in frame.columns]
+            if sort_cols:
+                frame = frame.sort_values(sort_cols, ascending=True)
+        total = len(frame)
+        if offset > 0:
+            frame = frame.iloc[offset:]
+        if limit > 0:
+            frame = frame.head(limit)
+        cols = [c for c in ["node_id", "node_type", "label", "search_score", "site_id", "core", "taxon", "module_id", "variable", "ontology_prefix", "source_table", "source_file", "branch"] if c in frame.columns]
+        return {
+            "rows": dataframe_records(frame[cols], limit=len(frame)) if cols else dataframe_records(frame, limit=len(frame)),
+            "total": int(total),
+            "query": q,
+            "node_type": node_type,
+            "offset": offset,
+            "limit": limit,
+        }
+
+    def kg_node_detail(self, node_id: str) -> Dict[str, Any]:
+        node_id = self.resolve_kg_node_id(node_id)
+        if not node_id or self.kg_nodes.empty:
+            return {"node": None, "incident_edges": [], "neighbors": [], "measurements": [], "node_id": node_id, "status": "missing"}
+        node = self.kg_nodes[self.kg_nodes["node_id"].astype(str) == node_id]
+        if node.empty:
+            return {"node": None, "incident_edges": [], "neighbors": [], "measurements": [], "node_id": node_id, "status": "missing"}
+        node_row = node.iloc[[0]].copy()
+        incident = self.kg_edges[(self.kg_edges["source_id"].astype(str) == node_id) | (self.kg_edges["target_id"].astype(str) == node_id)].copy()
+        incident = incident.sort_values([c for c in ["edge_type", "weight", "value"] if c in incident.columns], ascending=[True, False, False] if any(c in incident.columns for c in ["weight", "value"]) else True)
+        neighbor_ids = []
+        if not incident.empty:
+            neighbor_ids = sorted(set(incident["source_id"].astype(str).tolist() + incident["target_id"].astype(str).tolist()) - {node_id})
+        neighbors = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(neighbor_ids)].copy() if neighbor_ids else pd.DataFrame()
+        measurements = self.kg_measurements[self.kg_measurements["node_id"].astype(str) == node_id].copy() if not self.kg_measurements.empty and "node_id" in self.kg_measurements.columns else pd.DataFrame()
+        return {
+            "status": "ok",
+            "node_id": node_id,
+            "node": dataframe_records(node_row, limit=1)[0],
+            "incident_edges": dataframe_records(incident, limit=120),
+            "neighbors": dataframe_records(neighbors, limit=60),
+            "measurements": dataframe_records(measurements, limit=120),
+        }
+
+    def kg_elements_for_nodes(self, node_ids: Iterable[str], edge_ids: Iterable[str]) -> Dict[str, Any]:
+        node_ids = [str(x) for x in node_ids if str(x)]
+        edge_ids = [str(x) for x in edge_ids if str(x)]
+        nodes = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(node_ids)].copy() if node_ids else pd.DataFrame()
+        edges = self.kg_edges[self.kg_edges["edge_id"].astype(str).isin(edge_ids)].copy() if edge_ids else pd.DataFrame()
+        node_elements = []
+        for _, row in nodes.iterrows():
+            node_type = str(row.get("node_type", "unknown")).lower()
+            node_id = str(row.get("node_id", ""))
+            node_elements.append(
+                {
+                    "data": {
+                        "id": node_id,
+                        "label": str(row.get("label", node_id)),
+                        "type": node_type,
+                        "node_type": str(row.get("node_type", "unknown")),
+                        "site_id": row.get("site_id", ""),
+                        "core": row.get("core", ""),
+                        "taxon": row.get("taxon", ""),
+                        "module_id": row.get("module_id", ""),
+                        "variable": row.get("variable", ""),
+                        "ontology_prefix": row.get("ontology_prefix", ""),
+                        "source_table": row.get("source_table", ""),
+                        "source_file": row.get("source_file", ""),
+                    },
+                    "classes": node_type,
+                }
+            )
+        edge_elements = []
+        for _, row in edges.iterrows():
+            edge_elements.append(
+                {
+                    "data": {
+                        "id": str(row.get("edge_id", "")),
+                        "source": str(row.get("source_id", "")),
+                        "target": str(row.get("target_id", "")),
+                        "label": str(row.get("edge_type", "")),
+                        "edge_type": str(row.get("edge_type", "")),
+                        "weight": float(row.get("weight", row.get("value", 1.0)) or 1.0),
+                        "source_table": row.get("source_table", ""),
+                        "source_file": row.get("source_file", ""),
+                        "analysis": row.get("analysis", ""),
+                    },
+                    "classes": str(row.get("edge_type", "")),
+                }
+            )
+        return {"nodes": node_elements, "edges": edge_elements}
+
+    def kg_neighborhood(self, node_id: str = "", depth: int = 1, edge_type: str = "", node_type: str = "", limit: int = 150) -> Dict[str, Any]:
+        focus = self.resolve_kg_node_id(node_id)
+        if not focus and not self.kg_nodes.empty:
+            focus = str(self.kg_nodes.iloc[0]["node_id"])
+        if not focus:
+            return {"status": "missing", "focus": "", "nodes": [], "edges": [], "elements": [], "summary": []}
+        allowed_edge_types = {item.strip().lower() for item in str(edge_type or "").split(",") if item.strip()}
+        visited = {focus}
+        frontier = {focus}
+        edge_ids = []
+        for _ in range(max(1, depth)):
+            next_frontier = set()
+            for current in frontier:
+                for item in self.kg_neighbors.get(current, []):
+                    if allowed_edge_types and str(item.get("edge_type", "")).lower() not in allowed_edge_types:
+                        continue
+                    neighbor = str(item.get("neighbor_id", ""))
+                    edge_id = str(item.get("edge_id", ""))
+                    if neighbor:
+                        next_frontier.add(neighbor)
+                    if edge_id:
+                        edge_ids.append(edge_id)
+                    if len(edge_ids) >= limit * 5:
+                        break
+                if len(edge_ids) >= limit * 5:
+                    break
+            visited.update(next_frontier)
+            frontier = next_frontier - visited
+            if len(visited) >= limit:
+                break
+        if node_type:
+            node_frame = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(visited) & (self.kg_nodes["node_type"].astype(str).str.lower() == node_type.lower())].copy()
+            visited = set(node_frame["node_id"].astype(str).tolist()) | {focus}
+        else:
+            node_frame = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(visited)].copy()
+        edge_frame = self.kg_edges[self.kg_edges["edge_id"].astype(str).isin(set(edge_ids))].copy()
+        if not edge_frame.empty and limit > 0:
+            sort_cols = [c for c in ["weight", "value"] if c in edge_frame.columns]
+            if sort_cols:
+                edge_frame = edge_frame.sort_values(sort_cols, ascending=False)
+            edge_frame = edge_frame.head(limit * 5)
+        elements = self.kg_elements_for_nodes(node_frame["node_id"].astype(str).tolist(), edge_frame["edge_id"].astype(str).tolist())
+        summary = [
+            {"label": "Focus", "value": focus},
+            {"label": "Depth", "value": depth},
+            {"label": "Nodes", "value": len(node_frame)},
+            {"label": "Edges", "value": len(edge_frame)},
+            {"label": "Filtered edge types", "value": ", ".join(sorted(allowed_edge_types)) if allowed_edge_types else "all"},
+        ]
+        return {
+            "status": "ok",
+            "focus": focus,
+            "depth": depth,
+            "node_type": node_type,
+            "edge_type": edge_type,
+            "nodes": dataframe_records(node_frame, limit=limit * 2),
+            "edges": dataframe_records(edge_frame, limit=limit * 4),
+            "elements": elements,
+            "summary": summary,
+            "truncated": len(node_frame) >= limit or len(edge_frame) >= limit * 5,
+        }
+
+    def kg_path(self, source: str, target: str, max_depth: int = 4, edge_type: str = "") -> Dict[str, Any]:
+        source_id = self.resolve_kg_node_id(source)
+        target_id = self.resolve_kg_node_id(target)
+        if not source_id or not target_id:
+            return {"status": "missing", "source": source_id, "target": target_id, "path": [], "nodes": [], "edges": [], "elements": []}
+        allowed_edge_types = {item.strip().lower() for item in str(edge_type or "").split(",") if item.strip()}
+        queue = deque([(source_id, [source_id], [])])
+        visited = {source_id}
+        found_nodes = []
+        found_edge_ids = []
+        while queue:
+            current, path_nodes, path_edges = queue.popleft()
+            if current == target_id:
+                found_nodes = path_nodes
+                found_edge_ids = path_edges
+                break
+            if len(path_nodes) - 1 >= max_depth:
+                continue
+            for item in self.kg_neighbors.get(current, []):
+                if allowed_edge_types and str(item.get("edge_type", "")).lower() not in allowed_edge_types:
+                    continue
+                neighbor = str(item.get("neighbor_id", ""))
+                edge_id = str(item.get("edge_id", ""))
+                if not neighbor or neighbor in visited:
+                    continue
+                visited.add(neighbor)
+                queue.append((neighbor, path_nodes + [neighbor], path_edges + ([edge_id] if edge_id else [])))
+        if not found_nodes:
+            return {
+                "status": "no_path",
+                "source": source_id,
+                "target": target_id,
+                "max_depth": max_depth,
+                "path": [],
+                "nodes": [],
+                "edges": [],
+                "elements": [],
+                "summary": [{"label": "Status", "value": "No path found"}],
+            }
+        nodes = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(found_nodes)].copy()
+        edges = self.kg_edges[self.kg_edges["edge_id"].astype(str).isin(set(found_edge_ids))].copy()
+        elements = self.kg_elements_for_nodes(nodes["node_id"].astype(str).tolist(), edges["edge_id"].astype(str).tolist())
+        summary = [
+            {"label": "Source", "value": source_id},
+            {"label": "Target", "value": target_id},
+            {"label": "Depth", "value": max_depth},
+            {"label": "Nodes", "value": len(nodes)},
+            {"label": "Edges", "value": len(edges)},
+        ]
+        return {
+            "status": "ok",
+            "source": source_id,
+            "target": target_id,
+            "max_depth": max_depth,
+            "path": [{"node_id": node_id} for node_id in found_nodes],
+            "nodes": dataframe_records(nodes, limit=len(nodes)),
+            "edges": dataframe_records(edges, limit=len(edges)),
+            "elements": elements,
+            "summary": summary,
+        }
+
+    def kg_downloads(self) -> Dict[str, Any]:
+        files = []
+        for rel in [
+            "kg_manifest.json",
+            "reports/KG_SCHEMA_AND_IMPORT_REPORT.md",
+            "tables/kg_nodes.tsv",
+            "tables/kg_edges.tsv",
+            "tables/kg_measurements.tsv",
+            "tables/kg_ontology_terms.tsv",
+            "tables/kg_sites.tsv",
+            "tables/kg_datasets.tsv",
+        ]:
+            path = self.kg_dir / rel
+            files.append({"name": rel, "exists": path.exists(), "size": path.stat().st_size if path.exists() else 0, "path": str(path)})
+        return {
+            "branch": self.branch,
+            "kg_dir": str(self.kg_dir),
+            "files": files,
+            "manifest": self.kg_manifest,
+        }
+
 
 HTML_PAGE = """<!doctype html>
 <html lang="en">
@@ -835,21 +1402,21 @@ HTML_PAGE = """<!doctype html>
   <title>NGraph Local Browser</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --panel: #111827;
-      --panel-2: #1f2937;
-      --line: #334155;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --accent: #22c55e;
-      --accent-2: #38bdf8;
-      --warning: #f59e0b;
-      --danger: #fb7185;
+      --bg: #f6f4ee;
+      --panel: #ffffff;
+      --panel-2: #f1ede5;
+      --line: #d8d0c2;
+      --text: #1d2320;
+      --muted: #5f6b64;
+      --accent: #2f6b4f;
+      --accent-2: #8b5e3c;
+      --warning: #9a6b2f;
+      --danger: #b24b4b;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: linear-gradient(180deg, #020617 0%, #0f172a 35%, #111827 100%);
+      background: linear-gradient(180deg, #fbfaf6 0%, #f6f4ee 48%, #ece6dc 100%);
       color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -858,10 +1425,15 @@ HTML_PAGE = """<!doctype html>
       top: 0;
       z-index: 20;
       backdrop-filter: blur(16px);
-      background: rgba(2, 6, 23, 0.92);
-      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+      background: linear-gradient(180deg, rgba(30, 70, 52, 0.97), rgba(43, 88, 67, 0.96));
+      border-bottom: 1px solid rgba(18, 44, 32, 0.28);
       padding: 18px 24px;
+      color: #f8f6f1;
+      box-shadow: 0 10px 26px rgba(18, 44, 32, 0.14);
     }
+    header a { color: #f8f6f1; }
+    header .muted { color: rgba(248, 246, 241, 0.78); }
+    header .title h1, header .title .sub { color: #f8f6f1; }
     .title {
       display: flex;
       align-items: baseline;
@@ -893,8 +1465,8 @@ HTML_PAGE = """<!doctype html>
     nav a {
       text-decoration: none;
       color: var(--text);
-      background: rgba(148, 163, 184, 0.12);
-      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: #ffffff;
+      border: 1px solid rgba(93, 79, 61, 0.16);
       padding: 8px 12px;
       border-radius: 999px;
       font-size: 13px;
@@ -906,15 +1478,15 @@ HTML_PAGE = """<!doctype html>
     }
     section {
       margin-bottom: 24px;
-      border: 1px solid rgba(148, 163, 184, 0.16);
+      border: 1px solid rgba(93, 79, 61, 0.14);
       border-radius: 20px;
-      background: rgba(15, 23, 42, 0.76);
-      box-shadow: 0 20px 45px rgba(2, 6, 23, 0.28);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 20px 45px rgba(64, 51, 36, 0.08);
       overflow: hidden;
     }
     .section-head {
       padding: 18px 20px 12px;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      border-bottom: 1px solid rgba(93, 79, 61, 0.12);
     }
     .section-head h2 {
       margin: 0 0 6px;
@@ -936,8 +1508,8 @@ HTML_PAGE = """<!doctype html>
       margin-bottom: 18px;
     }
     .stat {
-      background: rgba(15, 23, 42, 0.86);
-      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: #fffdf9;
+      border: 1px solid rgba(93, 79, 61, 0.14);
       border-radius: 16px;
       padding: 14px;
     }
@@ -954,8 +1526,8 @@ HTML_PAGE = """<!doctype html>
       gap: 18px;
     }
     .panel {
-      background: rgba(2, 6, 23, 0.55);
-      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: #fffdf9;
+      border: 1px solid rgba(93, 79, 61, 0.12);
       border-radius: 16px;
       padding: 16px;
     }
@@ -973,8 +1545,8 @@ HTML_PAGE = """<!doctype html>
     input, select, textarea, button {
       font: inherit;
       border-radius: 12px;
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      background: #0b1220;
+      border: 1px solid rgba(93, 79, 61, 0.18);
+      background: #ffffff;
       color: var(--text);
       padding: 10px 12px;
     }
@@ -982,50 +1554,51 @@ HTML_PAGE = """<!doctype html>
     textarea { width: 100%; min-height: 100px; resize: vertical; }
     button {
       cursor: pointer;
-      background: linear-gradient(135deg, rgba(34, 197, 94, 0.95), rgba(56, 189, 248, 0.95));
-      color: #07111f;
+      background: linear-gradient(135deg, rgba(47, 107, 79, 0.96), rgba(139, 94, 60, 0.92));
+      color: #fffdf9;
       font-weight: 700;
       border: none;
       padding: 10px 14px;
     }
     button.secondary {
-      background: rgba(148, 163, 184, 0.16);
+      background: #f6f2ea;
       color: var(--text);
-      border: 1px solid rgba(148, 163, 184, 0.22);
+      border: 1px solid rgba(93, 79, 61, 0.18);
     }
     .muted { color: var(--muted); }
     .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
     .chip {
       border-radius: 999px;
       padding: 6px 10px;
-      background: rgba(148, 163, 184, 0.12);
-      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: #f8f5ee;
+      border: 1px solid rgba(93, 79, 61, 0.16);
+      color: var(--text);
       font-size: 12px;
     }
-    .table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.12); }
+    .table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid rgba(93, 79, 61, 0.12); background: #fffdf9; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     thead th {
       position: sticky; top: 0;
-      background: rgba(15, 23, 42, 0.98);
-      color: #cbd5e1;
+      background: #f1ede5;
+      color: #2e2a25;
       text-align: left;
       padding: 10px 12px;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+      border-bottom: 1px solid rgba(93, 79, 61, 0.16);
       white-space: nowrap;
     }
     tbody td {
       padding: 9px 12px;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+      border-bottom: 1px solid rgba(93, 79, 61, 0.08);
       vertical-align: top;
     }
-    tbody tr:hover { background: rgba(148, 163, 184, 0.08); }
+    tbody tr:hover { background: rgba(47, 107, 79, 0.05); }
     .svg-box {
       width: 100%;
       min-height: 320px;
       overflow: auto;
       border-radius: 16px;
-      border: 1px solid rgba(148, 163, 184, 0.12);
-      background: rgba(2, 6, 23, 0.6);
+      border: 1px solid rgba(93, 79, 61, 0.12);
+      background: linear-gradient(180deg, #fffdf9, #f8f5ee);
     }
     .svg-box svg { display: block; width: 100%; height: auto; }
     .report-box {
@@ -1034,34 +1607,34 @@ HTML_PAGE = """<!doctype html>
       max-height: 520px;
       overflow: auto;
       white-space: pre-wrap;
-      background: #08111f;
-      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: #fffdf9;
+      border: 1px solid rgba(93, 79, 61, 0.12);
       border-radius: 16px;
       padding: 14px;
-      color: #d1d5db;
+      color: var(--text);
     }
     .status-banner {
       margin: 14px 24px 0;
       max-width: 1500px;
       padding: 12px 14px;
       border-radius: 14px;
-      border: 1px solid rgba(148, 163, 184, 0.18);
-      background: rgba(15, 23, 42, 0.82);
+      border: 1px solid rgba(93, 79, 61, 0.18);
+      background: rgba(255, 253, 249, 0.95);
       color: var(--muted);
       font-size: 13px;
       line-height: 1.45;
     }
     .status-banner.ok {
-      border-color: rgba(34, 197, 94, 0.35);
-      color: #bbf7d0;
+      border-color: rgba(47, 107, 79, 0.35);
+      color: #2f6b4f;
     }
     .status-banner.warning {
-      border-color: rgba(245, 158, 11, 0.38);
-      color: #fde68a;
+      border-color: rgba(154, 107, 47, 0.38);
+      color: #9a6b2f;
     }
     .status-banner.error {
-      border-color: rgba(251, 113, 133, 0.4);
-      color: #fecdd3;
+      border-color: rgba(178, 75, 75, 0.4);
+      color: #b24b4b;
     }
     .two-col {
       display: grid;
@@ -1093,6 +1666,7 @@ HTML_PAGE = """<!doctype html>
       <a href="#links">Predicted Links</a>
       <a href="#supergraph">Super Graph</a>
       <a href="#modules">Modules</a>
+      <a href="/kg">Knowledge Graph</a>
       <a href="#embeddings">Embeddings</a>
       <a href="#query">Query Console</a>
       <a href="#reports">Reports</a>
@@ -1208,6 +1782,39 @@ HTML_PAGE = """<!doctype html>
       </div>
     </section>
 
+    <section id="knowledge-graph">
+      <div class="section-head">
+        <h2>Knowledge Graph</h2>
+        <p>Browse the site, sample, taxon, module, proxy, and ontology substrate that will anchor the learnable KG.</p>
+      </div>
+      <div class="section-body">
+        <div class="controls">
+          <select id="kg-site"><option value="">All sites</option></select>
+          <input id="kg-taxon" type="text" placeholder="Focus taxon" />
+          <button onclick="loadKG()">Refresh KG</button>
+        </div>
+        <div class="stats" id="kg-stats"></div>
+        <div class="grid-2">
+          <div class="svg-box" id="kg-box"></div>
+          <div class="table-wrap" id="kg-summary-table"></div>
+        </div>
+        <div class="grid-2" style="margin-top: 16px;">
+          <div class="panel">
+            <h3>Selected Nodes</h3>
+            <div class="table-wrap" id="kg-nodes-table"></div>
+          </div>
+          <div class="panel">
+            <h3>Selected Edges</h3>
+            <div class="table-wrap" id="kg-edges-table"></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top: 16px;">
+          <h3>Measurements</h3>
+          <div class="table-wrap" id="kg-measurements-table"></div>
+        </div>
+      </div>
+    </section>
+
     <section id="embeddings">
       <div class="section-head">
         <h2>Embedding Manifold</h2>
@@ -1295,6 +1902,7 @@ HTML_PAGE = """<!doctype html>
       cards: [],
       questions: [],
       llmProvider: "local",
+      kgSites: [],
     };
 
     function escapeHtml(text) {
@@ -1401,6 +2009,7 @@ HTML_PAGE = """<!doctype html>
       state.summary = summary;
       state.questions = summary.questions || [];
       state.llmProvider = summary.llm_provider_default || "local";
+      state.kgSites = summary.kg_sites || [];
       document.getElementById("header-meta").textContent = `${summary.branch} | ${summary.primary_threshold} / ${summary.primary_method}`;
       renderLlmStatus({ llm_provider: state.llmProvider, llm_status: state.llmProvider === "gemini" ? "pending_key" : "local" });
       const counts = summary.counts || {};
@@ -1427,6 +2036,7 @@ HTML_PAGE = """<!doctype html>
       populateSelect("super-method", [...new Set((summary.combos || []).map(x => x.method))], false);
       populateSelect("module-threshold", [...new Set((summary.combos || []).map(x => x.threshold))], false);
       populateSelect("module-method", [...new Set((summary.combos || []).map(x => x.method))], false);
+      populateSelect("kg-site", state.kgSites || [], true, "All sites");
       document.getElementById("module-kind").value = "vgae";
 
       const reportSelect = document.getElementById("report-select");
@@ -1444,6 +2054,8 @@ HTML_PAGE = """<!doctype html>
       document.getElementById("super-method").value = summary.primary_method || PRIMARY_METHOD;
       document.getElementById("module-threshold").value = summary.primary_threshold || PRIMARY_THRESHOLD;
       document.getElementById("module-method").value = summary.primary_method || PRIMARY_METHOD;
+      document.getElementById("kg-site").value = "";
+      document.getElementById("kg-taxon").value = "";
       document.getElementById("query-provider").value = state.llmProvider;
 
       const loaders = [
@@ -1451,6 +2063,7 @@ HTML_PAGE = """<!doctype html>
         safeLoad("Links panel", loadLinks),
         safeLoad("Super graph panel", loadSuperGraph),
         safeLoad("Modules panel", loadModules),
+        safeLoad("Knowledge graph panel", loadKG),
         safeLoad("Embedding panel", loadEmbeddings),
         safeLoad("Report panel", loadReport),
       ];
@@ -1477,8 +2090,8 @@ HTML_PAGE = """<!doctype html>
 
     async function loadLinks() {
       const params = new URLSearchParams({
-        threshold: document.getElementById("link-threshold").value || "prev_5",
-        method: document.getElementById("link-method").value || "pearson",
+        threshold: document.getElementById("link-threshold").value || PRIMARY_THRESHOLD,
+        method: document.getElementById("link-method").value || PRIMARY_METHOD,
         relation_type: document.getElementById("link-relation").value || "",
         focus: document.getElementById("link-focus").value || "",
         limit: "80",
@@ -1490,8 +2103,8 @@ HTML_PAGE = """<!doctype html>
 
     async function loadSuperGraph() {
       const params = new URLSearchParams({
-        threshold: document.getElementById("super-threshold").value || "prev_5",
-        method: document.getElementById("super-method").value || "pearson",
+        threshold: document.getElementById("super-threshold").value || PRIMARY_THRESHOLD,
+        method: document.getElementById("super-method").value || PRIMARY_METHOD,
       });
       const data = await fetchJson(`/api/supergraph?${params.toString()}`);
       document.getElementById("supergraph-box").innerHTML = data.svg || "";
@@ -1500,8 +2113,8 @@ HTML_PAGE = """<!doctype html>
 
     async function loadModules() {
       const params = new URLSearchParams({
-        threshold: document.getElementById("module-threshold").value || "prev_5",
-        method: document.getElementById("module-method").value || "pearson",
+        threshold: document.getElementById("module-threshold").value || PRIMARY_THRESHOLD,
+        method: document.getElementById("module-method").value || PRIMARY_METHOD,
         kind: document.getElementById("module-kind").value || "vgae",
         module_id: document.getElementById("module-id").value || "",
         limit: "60",
@@ -1515,6 +2128,24 @@ HTML_PAGE = """<!doctype html>
       document.getElementById("module-box").innerHTML = data.svg || "";
       document.getElementById("module-table").innerHTML = tableHtml(data.members || []);
       document.getElementById("embedding-focus").value = data.focus_taxon || document.getElementById("embedding-focus").value;
+    }
+
+    async function loadKG() {
+      const params = new URLSearchParams({
+        site: document.getElementById("kg-site").value || "",
+        taxon: document.getElementById("kg-taxon").value || "",
+        limit: "60",
+      });
+      const data = await fetchJson(`/api/kg?${params.toString()}`);
+      const summaryRows = data.summary || [];
+      document.getElementById("kg-stats").innerHTML = summaryRows.length
+        ? summaryRows.map((row) => `<div class="stat"><div class="label">${escapeHtml(row.label)}</div><div class="value">${escapeHtml(row.value)}</div></div>`).join("")
+        : "";
+      document.getElementById("kg-box").innerHTML = data.svg || "";
+      document.getElementById("kg-summary-table").innerHTML = tableHtml(summaryRows);
+      document.getElementById("kg-nodes-table").innerHTML = tableHtml(data.nodes || []);
+      document.getElementById("kg-edges-table").innerHTML = tableHtml(data.edges || []);
+      document.getElementById("kg-measurements-table").innerHTML = tableHtml(data.measurements || []);
     }
 
     async function loadEmbeddings() {
@@ -1591,8 +2222,8 @@ HTML_PAGE = """<!doctype html>
     async function loadGraph(kind) {
       const params = new URLSearchParams({
         kind,
-        threshold: document.getElementById("link-threshold").value || "prev_5",
-        method: document.getElementById("link-method").value || "pearson",
+        threshold: document.getElementById("link-threshold").value || PRIMARY_THRESHOLD,
+        method: document.getElementById("link-method").value || PRIMARY_METHOD,
         focus: document.getElementById("link-focus").value || "",
       });
       const data = await fetchJson(`/api/graph?${params.toString()}`);
@@ -1603,6 +2234,7 @@ HTML_PAGE = """<!doctype html>
     bindEvent("module-id", "change", loadModules);
     bindEvent("super-threshold", "change", loadSuperGraph);
     bindEvent("super-method", "change", loadSuperGraph);
+    bindEvent("kg-site", "change", loadKG);
     bindEvent("link-threshold", "change", loadLinks);
     bindEvent("link-method", "change", loadLinks);
     bindEvent("link-relation", "change", loadLinks);
@@ -1629,6 +2261,619 @@ HTML_PAGE = """<!doctype html>
 </html>
 """
 
+HTML_PAGE = HTML_PAGE.replace('const PRIMARY_THRESHOLD = "prev_5";', f'const PRIMARY_THRESHOLD = "{PRIMARY_THRESHOLD}";')
+HTML_PAGE = HTML_PAGE.replace('const PRIMARY_METHOD = "pearson";', f'const PRIMARY_METHOD = "{PRIMARY_METHOD}";')
+HTML_PAGE = HTML_PAGE.replace('value || "prev_5"', 'value || PRIMARY_THRESHOLD')
+HTML_PAGE = HTML_PAGE.replace('value || "pearson"', 'value || PRIMARY_METHOD')
+
+
+def render_kg_page(app: NGraphBrowser, page: str, params: Dict[str, List[str]]) -> str:
+    schema = app.kg_schema()
+    downloads = app.kg_downloads()
+    initial = {
+        "query": params.get("q", [""])[0],
+        "node_id": params.get("id", [""])[0],
+        "source": params.get("source", [""])[0],
+        "target": params.get("target", [""])[0],
+        "site": params.get("site", [""])[0],
+        "taxon": params.get("taxon", [""])[0],
+        "node_type": params.get("node_type", [""])[0],
+        "edge_type": params.get("edge_type", [""])[0],
+        "depth": safe_int(params.get("depth", ["1"])[0], 1),
+        "max_depth": safe_int(params.get("max_depth", ["4"])[0], 4),
+    }
+    page_data = json.dumps(
+        {
+            "branch": app.branch,
+            "primary_threshold": PRIMARY_THRESHOLD,
+            "primary_method": PRIMARY_METHOD,
+            "schema": schema,
+            "downloads": downloads,
+            "initial": initial,
+        },
+        default=normalize_value,
+    )
+
+    nav = {
+        "/kg": "Overview",
+        "/kg/search": "Search",
+        "/kg/explore": "Explore",
+        "/kg/paths": "Paths",
+        "/kg/node": "Node",
+        "/kg/downloads": "Downloads",
+    }
+    active_label = nav.get(page, "Overview")
+    nav_html = "".join(
+        f"<a class='{'active' if route == page else ''}' href='{route}'>{label}</a>"
+        for route, label in nav.items()
+    )
+
+    base_css = """
+    :root {
+      --bg: #f6f4ee;
+      --panel: #ffffff;
+      --panel-2: #f1ede5;
+      --line: #d8d0c2;
+      --text: #1d2320;
+      --muted: #5f6b64;
+      --accent: #2f6b4f;
+      --accent-2: #8b5e3c;
+      --accent-3: #4d7f63;
+      --danger: #b24b4b;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: linear-gradient(180deg, #fbfaf6 0%, #f6f4ee 48%, #ece6dc 100%); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a { color: inherit; }
+    header { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(16px); background: linear-gradient(180deg, rgba(30, 70, 52, 0.97), rgba(43, 88, 67, 0.96)); border-bottom: 1px solid rgba(18, 44, 32, 0.28); padding: 16px 24px; color: #f8f6f1; box-shadow: 0 10px 26px rgba(18, 44, 32, 0.14); }
+    header a { color: #f8f6f1; }
+    header .muted { color: rgba(248, 246, 241, 0.78); }
+    header .title h1, header .title .sub { color: #f8f6f1; }
+    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .head h1 { margin: 0; font-size: 24px; letter-spacing: 0.01em; }
+    .head p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .nav { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    .nav a { text-decoration: none; padding: 8px 12px; border-radius: 999px; border: 1px solid rgba(93, 79, 61, 0.16); background: #ffffff; color: var(--text); font-size: 13px; box-shadow: 0 1px 0 rgba(93, 79, 61, 0.04); }
+    .nav a.active { background: linear-gradient(135deg, rgba(47, 107, 79, 0.12), rgba(139, 94, 60, 0.12)); border-color: rgba(47, 107, 79, 0.3); }
+    main { max-width: 1600px; margin: 0 auto; padding: 22px 24px 40px; }
+    main.kg-main { max-width: none; width: 100%; margin: 0; padding: 22px 24px 40px; }
+    .hero { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 18px; margin-bottom: 18px; }
+    .card, .panel { background: var(--panel); border: 1px solid rgba(93, 79, 61, 0.14); border-radius: 18px; box-shadow: 0 16px 38px rgba(64, 51, 36, 0.08); }
+    .card { padding: 18px; }
+    .panel { padding: 16px; }
+    .title-2 { margin: 0 0 10px; font-size: 18px; }
+    .muted { color: var(--muted); }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .stat { padding: 14px; border-radius: 16px; border: 1px solid rgba(93, 79, 61, 0.14); background: #fffdf9; }
+    .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    .stat .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+    input, select, button, textarea { font: inherit; border-radius: 12px; border: 1px solid rgba(93, 79, 61, 0.18); background: #ffffff; color: var(--text); padding: 10px 12px; }
+    input, select, textarea { min-width: 180px; }
+    textarea { width: 100%; min-height: 100px; resize: vertical; }
+    button { cursor: pointer; background: linear-gradient(135deg, rgba(47, 107, 79, 0.96), rgba(139, 94, 60, 0.92)); color: #fffdf9; font-weight: 700; border: none; }
+    button.secondary { background: #f6f2ea; color: var(--text); border: 1px solid rgba(93, 79, 61, 0.18); }
+    .table-wrap { overflow: auto; border-radius: 14px; border: 1px solid rgba(93, 79, 61, 0.12); background: #fffdf9; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 9px 11px; border-bottom: 1px solid rgba(93, 79, 61, 0.08); vertical-align: top; }
+    th { position: sticky; top: 0; background: #f1ede5; text-align: left; white-space: nowrap; color: #2e2a25; }
+    tr:hover td { background: rgba(47, 107, 79, 0.05); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 10px; border: 1px solid rgba(93, 79, 61, 0.16); background: #f8f5ee; color: var(--text); font-size: 12px; }
+    .graph { min-height: 640px; border-radius: 16px; border: 1px solid rgba(93, 79, 61, 0.12); overflow: hidden; background: linear-gradient(180deg, #fffdf9, #f8f5ee); }
+    .graph.small { min-height: 420px; }
+    .kg-explore-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(520px, 0.95fr); gap: 20px; align-items: stretch; width: 100%; }
+    .kg-explore-main { min-width: 0; display: flex; flex-direction: column; }
+    .kg-explore-sidebar { min-width: 0; display: flex; flex-direction: column; gap: 14px; transition: width 180ms ease, min-width 180ms ease, opacity 180ms ease, transform 180ms ease; }
+    .kg-explore-graph { flex: 1; min-height: 72vh; height: clamp(680px, 74vh, 1120px); }
+    .kg-explore-sidebar .report { flex: 0 0 auto; min-height: 280px; max-height: none; }
+    .kg-explore-sidebar .panel { flex: 1; display: flex; flex-direction: column; }
+    .kg-explore-sidebar .table-wrap { flex: 1; min-height: 260px; max-height: none; overflow: auto; }
+    .kg-explore-sidebar.collapsed { min-width: 56px; width: 56px; opacity: 0.98; }
+    .kg-explore-sidebar.collapsed .kg-detail-content { display: none; }
+    .kg-explore-sidebar.collapsed .kg-detail-toggle { width: 100%; }
+    .kg-explore-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .kg-explore-toggle-row .title-2 { margin: 0; }
+    .kg-detail-toggle { white-space: nowrap; }
+    .shell { display: grid; gap: 16px; }
+    .shell.two-col { grid-template-columns: 1.4fr 0.6fr; }
+    .shell.three-col { grid-template-columns: 1.1fr 0.65fr 0.65fr; }
+    .report { white-space: pre-wrap; overflow: auto; max-height: 520px; border-radius: 14px; padding: 14px; border: 1px solid rgba(93, 79, 61, 0.12); background: #fffdf9; color: var(--text); }
+    @media (max-width: 1100px) {
+      .hero, .grid-2, .shell.two-col, .shell.three-col, .kg-explore-layout { grid-template-columns: 1fr; }
+      .kg-explore-graph { min-height: 58vh; height: 58vh; }
+    }
+    """
+
+    if page == "/kg":
+        body = f"""
+        <section class='hero'>
+          <div class='card'>
+            <h2 class='title-2'>Knowledge Graph Overview</h2>
+            <p class='muted'>A browsable, file-backed KG surface for sites, samples, aeDNA taxa, modules, proxy data, and ontology-linked entities.</p>
+            <div class='chip-row' id='kg-overview-chips'></div>
+            <div class='grid-2' style='margin-top:16px;'>
+              <div class='panel'><h3 class='title-2'>Node types</h3><div class='table-wrap' id='kg-node-types'></div></div>
+              <div class='panel'><h3 class='title-2'>Edge predicates</h3><div class='table-wrap' id='kg-edge-types'></div></div>
+            </div>
+          </div>
+          <div class='card'>
+            <h2 class='title-2'>Quick Links</h2>
+            <div class='chip-row'>
+              <a class='chip' href='/kg/search'>Search</a>
+              <a class='chip' href='/kg/explore'>Explore</a>
+              <a class='chip' href='/kg/paths'>Paths</a>
+              <a class='chip' href='/kg/node'>Node</a>
+              <a class='chip' href='/kg/downloads'>Downloads</a>
+            </div>
+            <div style='margin-top:16px;' class='panel'>
+              <h3 class='title-2'>Metagraph</h3>
+              <div class='table-wrap' id='kg-metagraph'></div>
+            </div>
+          </div>
+        </section>
+        <section class='card'>
+          <h2 class='title-2'>Source Datasets</h2>
+          <div class='table-wrap' id='kg-datasets'></div>
+        </section>
+        """
+        script = """
+        async function initKgOverview() {
+          const schema = (window.__KG_PAGE__ && window.__KG_PAGE__.schema) || {};
+          const manifest = (schema.manifest || {});
+          const counts = [
+            ["Nodes", (manifest.counts && manifest.counts.nodes) || 0],
+            ["Edges", (manifest.counts && manifest.counts.edges) || 0],
+            ["Measurements", (manifest.counts && manifest.counts.measurements) || 0],
+            ["Sites", (manifest.counts && manifest.counts.site_nodes) || 0],
+          ];
+          document.getElementById("kg-overview-chips").innerHTML = counts.map(([k, v]) => `<span class="chip"><strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}</span>`).join("");
+          document.getElementById("kg-node-types").innerHTML = tableHtml(schema.node_types || []);
+          document.getElementById("kg-edge-types").innerHTML = tableHtml(schema.edge_types || []);
+          document.getElementById("kg-metagraph").innerHTML = tableHtml((schema.metagraph || []).slice(0, 200));
+          document.getElementById("kg-datasets").innerHTML = tableHtml(schema.datasets || []);
+        }
+        initKgOverview();
+        """
+    elif page == "/kg/search":
+        body = """
+        <section class='card'>
+          <h2 class='title-2'>Search</h2>
+          <div class='controls'>
+            <input id='kg-search-q' placeholder='Search nodes by label, id, taxon, site, variable...' />
+            <select id='kg-search-type'><option value=''>All types</option></select>
+            <input id='kg-search-limit' type='number' min='10' max='200' value='50' style='width:120px;' />
+            <button onclick='runKgSearch()'>Search</button>
+          </div>
+          <div class='grid-2'>
+            <div class='table-wrap' id='kg-search-table'></div>
+            <div class='panel'>
+              <h3 class='title-2'>Node Summary</h3>
+              <div class='report' id='kg-search-detail'>Run a search to inspect a node.</div>
+            </div>
+          </div>
+        </section>
+        """
+        script = """
+        function renderSearchRowLink(row) {
+          const id = row.node_id || "";
+          return `<a href='/kg/node?id=${encodeURIComponent(id)}'>${escapeHtml(id)}</a>`;
+        }
+        async function runKgSearch() {
+          const q = document.getElementById("kg-search-q").value || "";
+          const nodeType = document.getElementById("kg-search-type").value || "";
+          const limit = document.getElementById("kg-search-limit").value || "50";
+          const data = await fetchJson(`/api/kg/search?query=${encodeURIComponent(q)}&node_type=${encodeURIComponent(nodeType)}&limit=${encodeURIComponent(limit)}`);
+          const rows = (data.rows || []).map(row => ({
+            node_id: renderSearchRowLink(row),
+            node_type: row.node_type || "",
+            label: row.label || "",
+            search_score: row.search_score || "",
+            site_id: row.site_id || "",
+            taxon: row.taxon || "",
+            module_id: row.module_id || "",
+            variable: row.variable || "",
+          }));
+          document.getElementById("kg-search-table").innerHTML = tableHtml(rows);
+          if (data.rows && data.rows.length) {
+            await loadKgNode(data.rows[0].node_id);
+          }
+        }
+        async function loadKgNode(nodeId) {
+          const data = await fetchJson(`/api/kg/node?id=${encodeURIComponent(nodeId)}`);
+          const node = data.node || {};
+          const lines = [
+            `node_id: ${node.node_id || ""}`,
+            `node_type: ${node.node_type || ""}`,
+            `label: ${node.label || ""}`,
+            `site_id: ${node.site_id || ""}`,
+            `taxon: ${node.taxon || ""}`,
+            `module_id: ${node.module_id || ""}`,
+            `variable: ${node.variable || ""}`,
+            `source_table: ${node.source_table || ""}`,
+            `source_file: ${node.source_file || ""}`,
+          ];
+          document.getElementById("kg-search-detail").textContent = lines.join("\\n");
+        }
+        async function initKgSearch() {
+          const schema = (window.__KG_PAGE__ && window.__KG_PAGE__.schema) || {};
+          document.getElementById("kg-search-type").innerHTML = ["<option value=''>All types</option>", ...(schema.node_types || []).map(row => `<option value='${escapeHtml(row.node_type)}'>${escapeHtml(row.node_type)} (${escapeHtml(row.count)})</option>`)].join("");
+          const initial = (window.__KG_PAGE__ && window.__KG_PAGE__.initial) || {};
+          document.getElementById("kg-search-q").value = initial.query || "";
+          document.getElementById("kg-search-type").value = initial.node_type || "";
+          if (initial.query) {
+            await runKgSearch();
+          } else {
+            document.getElementById("kg-search-table").innerHTML = tableHtml([]);
+          }
+        }
+        initKgSearch();
+        """
+    elif page == "/kg/explore":
+        body = """
+        <section class='kg-explore-layout'>
+          <div class='card kg-explore-main'>
+            <h2 class='title-2'>Explore</h2>
+            <div class='controls'>
+              <input id='kg-focus' placeholder='Node id, site, or taxon' />
+              <select id='kg-depth'><option value='1'>1 hop</option><option value='2'>2 hops</option><option value='3'>3 hops</option></select>
+              <select id='kg-edge-type'><option value=''>All edges</option></select>
+              <select id='kg-node-type'><option value=''>All nodes</option></select>
+              <input id='kg-limit' type='number' min='20' max='300' value='150' style='width:120px;' />
+              <button onclick='loadKgExplore()'>Refresh</button>
+              <button class='secondary' onclick='focusSelectedNode()'>Inspect selected</button>
+            </div>
+            <div class='graph kg-explore-graph' id='kg-cy'></div>
+          </div>
+          <div class='card kg-explore-sidebar' id='kg-explore-sidebar'>
+            <div class='kg-explore-toggle-row'>
+              <h2 class='title-2'>Node Detail</h2>
+              <button class='secondary kg-detail-toggle' onclick='toggleKgSidebar()'>Collapse</button>
+            </div>
+            <div class='kg-detail-content'>
+              <div class='report' id='kg-node-detail'>Click a node to inspect it.</div>
+              <div class='panel' style='margin-top:14px;'>
+                <h3 class='title-2'>Selected neighborhood</h3>
+                <div class='table-wrap' id='kg-neighborhood-table'></div>
+              </div>
+            </div>
+          </div>
+        </section>
+        """
+        script = """
+        let kgCy = null;
+        let kgSelected = null;
+        let kgResizeObserver = null;
+        let kgSidebarCollapsed = false;
+        function cyStyles() {
+          return [
+            { selector: 'node', style: { 'label': 'data(label)', 'font-size': 10, 'text-wrap': 'wrap', 'text-max-width': 90, 'background-color': '#57b8ff', 'border-width': 1, 'border-color': '#e5e7eb', 'width': 18, 'height': 18 } },
+            { selector: 'node.site', style: { 'background-color': '#1d7ed6', 'shape': 'round-rectangle', 'width': 28, 'height': 28 } },
+            { selector: 'node.sample', style: { 'background-color': '#0ca678' } },
+            { selector: 'node.taxon', style: { 'background-color': '#2b8a3e' } },
+            { selector: 'node.module', style: { 'background-color': '#f08c00', 'shape': 'diamond', 'width': 24, 'height': 24 } },
+            { selector: 'node.proxymasurement', style: { 'background-color': '#f59f00' } },
+            { selector: 'node.proxymeasurement', style: { 'background-color': '#f59f00' } },
+            { selector: 'node.proxyvariable', style: { 'background-color': '#20c997' } },
+            { selector: 'node.dataset', style: { 'background-color': '#adb5bd' } },
+            { selector: 'node.analysisrun', style: { 'background-color': '#e8590c' } },
+            { selector: 'node.ontologyterm', style: { 'background-color': '#868e96' } },
+            { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#f7b955' } },
+            { selector: 'edge', style: { 'curve-style': 'bezier', 'line-color': '#9db0c8', 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9db0c8', 'opacity': 0.65, 'width': 1.5 } },
+            { selector: 'edge.site_has_sample', style: { 'line-color': '#57b8ff' } },
+            { selector: 'edge.sample_observed_taxon', style: { 'line-color': '#49d17a' } },
+            { selector: 'edge.sample_has_measurement', style: { 'line-color': '#f7b955' } },
+            { selector: 'edge.taxon_member_of_module', style: { 'line-color': '#f08c00', 'target-arrow-color': '#f08c00' } },
+            { selector: 'edge.measurement_of_variable', style: { 'line-color': '#20c997' } },
+            { selector: 'edge.measurement_derived_from_dataset', style: { 'line-color': '#adb5bd' } },
+            { selector: 'edge.entity_has_ontology_term', style: { 'line-color': '#868e96' } },
+            { selector: '.path-edge', style: { 'line-color': '#f7b955', 'width': 3.5, 'opacity': 1 } },
+          ];
+        }
+        async function renderKgNodeDetail(nodeId) {
+          const data = await fetchJson(`/api/kg/node?id=${encodeURIComponent(nodeId)}`);
+          const node = data.node || {};
+          const detailLines = [
+            `node_id: ${node.node_id || ""}`,
+            `node_type: ${node.node_type || ""}`,
+            `label: ${node.label || ""}`,
+            `site_id: ${node.site_id || ""}`,
+            `taxon: ${node.taxon || ""}`,
+            `module_id: ${node.module_id || ""}`,
+            `variable: ${node.variable || ""}`,
+            `source_table: ${node.source_table || ""}`,
+            `source_file: ${node.source_file || ""}`,
+          ];
+          document.getElementById("kg-node-detail").textContent = detailLines.join("\\n");
+          document.getElementById("kg-neighborhood-table").innerHTML = tableHtml((data.incident_edges || []).slice(0, 80));
+        }
+        async function loadKgExplore() {
+          const focus = document.getElementById("kg-focus").value || "";
+          const depth = document.getElementById("kg-depth").value || "1";
+          const edgeType = document.getElementById("kg-edge-type").value || "";
+          const nodeType = document.getElementById("kg-node-type").value || "";
+          const limit = document.getElementById("kg-limit").value || "150";
+          const data = await fetchJson(`/api/kg/neighborhood?id=${encodeURIComponent(focus)}&depth=${encodeURIComponent(depth)}&edge_type=${encodeURIComponent(edgeType)}&node_type=${encodeURIComponent(nodeType)}&limit=${encodeURIComponent(limit)}`);
+          const elements = (data.elements || {nodes: [], edges: []});
+          if (kgCy) {
+            kgCy.destroy();
+          }
+          kgCy = cytoscape({
+            container: document.getElementById("kg-cy"),
+            elements: [...(elements.nodes || []), ...(elements.edges || [])],
+            style: cyStyles(),
+            layout: { name: 'cose', animate: false, fit: true, padding: 24 },
+            minZoom: 0.2,
+            maxZoom: 3
+          });
+          const kgContainer = document.getElementById("kg-cy");
+          if (kgResizeObserver) {
+            kgResizeObserver.disconnect();
+          }
+          if ("ResizeObserver" in window && kgContainer) {
+            kgResizeObserver = new ResizeObserver(() => {
+              if (kgCy) {
+                kgCy.resize();
+                kgCy.fit(undefined, 24);
+              }
+            });
+            kgResizeObserver.observe(kgContainer);
+            if (kgContainer.parentElement) {
+              kgResizeObserver.observe(kgContainer.parentElement);
+            }
+          } else if (kgCy) {
+            window.requestAnimationFrame(() => {
+              kgCy.resize();
+              kgCy.fit(undefined, 24);
+            });
+          }
+          kgCy.on('tap', 'node', async function(evt) {
+            const id = evt.target.id();
+            kgSelected = id;
+            await renderKgNodeDetail(id);
+          });
+          if ((elements.nodes || []).length > 0) {
+            const first = elements.nodes[0].data.id;
+            kgSelected = first;
+            await renderKgNodeDetail(first);
+          }
+          document.getElementById("kg-neighborhood-table").innerHTML = tableHtml(data.nodes || []);
+        }
+        function focusSelectedNode() {
+          if (!kgSelected) return;
+          document.getElementById("kg-focus").value = kgSelected;
+          loadKgExplore();
+        }
+        function toggleKgSidebar() {
+          kgSidebarCollapsed = !kgSidebarCollapsed;
+          const sidebar = document.getElementById("kg-explore-sidebar");
+          const button = document.querySelector(".kg-detail-toggle");
+          if (sidebar) {
+            sidebar.classList.toggle("collapsed", kgSidebarCollapsed);
+          }
+          if (button) {
+            button.textContent = kgSidebarCollapsed ? "Expand" : "Collapse";
+          }
+          window.requestAnimationFrame(() => {
+            if (kgCy) {
+              kgCy.resize();
+              kgCy.fit(undefined, 24);
+            }
+          });
+        }
+        async function initKgExplore() {
+          const schema = (window.__KG_PAGE__ && window.__KG_PAGE__.schema) || {};
+          document.getElementById("kg-edge-type").innerHTML = ["<option value=''>All edges</option>", ...(schema.edge_types || []).map(row => `<option value='${escapeHtml(row.edge_type)}'>${escapeHtml(row.edge_type)} (${escapeHtml(row.count)})</option>`)].join("");
+          document.getElementById("kg-node-type").innerHTML = ["<option value=''>All nodes</option>", ...(schema.node_types || []).map(row => `<option value='${escapeHtml(row.node_type)}'>${escapeHtml(row.node_type)} (${escapeHtml(row.count)})</option>`)].join("");
+          const initial = (window.__KG_PAGE__ && window.__KG_PAGE__.initial) || {};
+          document.getElementById("kg-focus").value = initial.node_id || initial.site || initial.taxon || "";
+          document.getElementById("kg-depth").value = String(initial.depth || 1);
+          if (initial.edge_type) document.getElementById("kg-edge-type").value = initial.edge_type;
+          if (initial.node_type) document.getElementById("kg-node-type").value = initial.node_type;
+          await loadKgExplore();
+        }
+        window.addEventListener('resize', () => {
+          if (kgCy) {
+            kgCy.resize();
+            kgCy.fit(undefined, 24);
+          }
+        });
+        initKgExplore();
+        """
+    elif page == "/kg/paths":
+        body = """
+        <section class='card'>
+          <h2 class='title-2'>Paths</h2>
+          <div class='controls'>
+            <input id='kg-path-source' placeholder='Source node id' />
+            <input id='kg-path-target' placeholder='Target node id' />
+            <select id='kg-path-edge-type'><option value=''>All edges</option></select>
+            <input id='kg-path-depth' type='number' min='1' max='8' value='4' style='width:120px;' />
+            <button onclick='loadKgPath()'>Find path</button>
+          </div>
+          <div class='shell two-col'>
+            <div class='graph' id='kg-path-cy'></div>
+            <div class='panel'>
+              <h3 class='title-2'>Path summary</h3>
+              <div class='chip-row' id='kg-path-summary'></div>
+              <div class='table-wrap' id='kg-path-table' style='margin-top:12px;'></div>
+            </div>
+          </div>
+        </section>
+        """
+        script = """
+        let kgPathCy = null;
+        async function loadKgPath() {
+          const source = document.getElementById("kg-path-source").value || "";
+          const target = document.getElementById("kg-path-target").value || "";
+          const edgeType = document.getElementById("kg-path-edge-type").value || "";
+          const maxDepth = document.getElementById("kg-path-depth").value || "4";
+          const data = await fetchJson(`/api/kg/paths?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}&edge_type=${encodeURIComponent(edgeType)}&max_depth=${encodeURIComponent(maxDepth)}`);
+          document.getElementById("kg-path-summary").innerHTML = (data.summary || []).map(row => `<span class="chip"><strong>${escapeHtml(row.label)}:</strong> ${escapeHtml(row.value)}</span>`).join("");
+          document.getElementById("kg-path-table").innerHTML = tableHtml(data.edges || []);
+          const elements = data.elements || {nodes: [], edges: []};
+          if (kgPathCy) kgPathCy.destroy();
+          kgPathCy = cytoscape({
+            container: document.getElementById("kg-path-cy"),
+            elements: [...(elements.nodes || []), ...(elements.edges || [])],
+            style: cyStyles().concat([{ selector: '.path-edge', style: { 'line-color': '#f7b955', 'width': 4, 'opacity': 1 } }]),
+            layout: { name: 'breadthfirst', directed: false, fit: true, padding: 30 },
+          });
+        }
+        async function initKgPaths() {
+          const schema = (window.__KG_PAGE__ && window.__KG_PAGE__.schema) || {};
+          document.getElementById("kg-path-edge-type").innerHTML = ["<option value=''>All edges</option>", ...(schema.edge_types || []).map(row => `<option value='${escapeHtml(row.edge_type)}'>${escapeHtml(row.edge_type)} (${escapeHtml(row.count)})</option>`)].join("");
+          const initial = (window.__KG_PAGE__ && window.__KG_PAGE__.initial) || {};
+          document.getElementById("kg-path-source").value = initial.source || "";
+          document.getElementById("kg-path-target").value = initial.target || "";
+          if (initial.edge_type) document.getElementById("kg-path-edge-type").value = initial.edge_type;
+          document.getElementById("kg-path-depth").value = String(initial.max_depth || 4);
+          if (initial.source && initial.target) {
+            await loadKgPath();
+          }
+        }
+        initKgPaths();
+        """
+    elif page == "/kg/node":
+        body = """
+        <section class='card'>
+          <h2 class='title-2'>Node Detail</h2>
+          <div class='controls'>
+            <input id='kg-node-id' placeholder='Node id' />
+            <button onclick='loadKgNodePage()'>Load node</button>
+            <a class='chip' href='/kg/explore'>Open explore</a>
+          </div>
+          <div class='shell two-col'>
+            <div>
+              <div class='panel'><h3 class='title-2'>Node</h3><div class='report' id='kg-node-info'>Select a node.</div></div>
+              <div class='panel' style='margin-top:14px;'><h3 class='title-2'>Incident edges</h3><div class='table-wrap' id='kg-node-edges'></div></div>
+            </div>
+            <div>
+              <div class='panel'><h3 class='title-2'>Measurements</h3><div class='table-wrap' id='kg-node-measurements'></div></div>
+              <div class='panel' style='margin-top:14px;'><h3 class='title-2'>Neighbors</h3><div class='table-wrap' id='kg-node-neighbors'></div></div>
+            </div>
+          </div>
+        </section>
+        """
+        script = """
+        async function loadKgNodePage() {
+          const id = document.getElementById("kg-node-id").value || "";
+          const data = await fetchJson(`/api/kg/node?id=${encodeURIComponent(id)}`);
+          const node = data.node || {};
+          document.getElementById("kg-node-info").textContent = [
+            `node_id: ${node.node_id || ""}`,
+            `node_type: ${node.node_type || ""}`,
+            `label: ${node.label || ""}`,
+            `site_id: ${node.site_id || ""}`,
+            `core: ${node.core || ""}`,
+            `taxon: ${node.taxon || ""}`,
+            `module_id: ${node.module_id || ""}`,
+            `variable: ${node.variable || ""}`,
+            `source_table: ${node.source_table || ""}`,
+            `source_file: ${node.source_file || ""}`,
+          ].join("\\n");
+          document.getElementById("kg-node-edges").innerHTML = tableHtml(data.incident_edges || []);
+          document.getElementById("kg-node-measurements").innerHTML = tableHtml(data.measurements || []);
+          document.getElementById("kg-node-neighbors").innerHTML = tableHtml(data.neighbors || []);
+        }
+        async function initKgNode() {
+          const initial = (window.__KG_PAGE__ && window.__KG_PAGE__.initial) || {};
+          document.getElementById("kg-node-id").value = initial.node_id || "";
+          if (initial.node_id) {
+            await loadKgNodePage();
+          }
+        }
+        initKgNode();
+        """
+    else:
+        body = """
+        <section class='grid-2'>
+          <div class='card'>
+            <h2 class='title-2'>Downloads</h2>
+            <div class='table-wrap' id='kg-download-table'></div>
+          </div>
+          <div class='card'>
+            <h2 class='title-2'>Manifest</h2>
+            <div class='report' id='kg-manifest'></div>
+          </div>
+        </section>
+        """
+        script = """
+        async function initKgDownloads() {
+          const downloads = (window.__KG_PAGE__ && window.__KG_PAGE__.downloads) || {};
+          document.getElementById("kg-download-table").innerHTML = tableHtml((downloads.files || []).map(row => ({
+            name: `<a href='/kg/file?name=${encodeURIComponent(row.name)}'>${escapeHtml(row.name)}</a>`,
+            exists: row.exists,
+            size: row.size,
+          })));
+          document.getElementById("kg-manifest").textContent = JSON.stringify(downloads.manifest || {}, null, 2);
+        }
+        initKgDownloads();
+        """
+
+    template = """
+    <!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1"/>
+      <title>__TITLE__</title>
+      <script src="/assets/vendor/cytoscape.min.js"></script>
+      <style>__CSS__</style>
+    </head>
+    <body>
+      <script>window.__KG_PAGE__ = __PAGE_DATA__;</script>
+      <header>
+        <div class="head">
+          <div>
+            <h1>__TITLE__</h1>
+            <p>Branch: __BRANCH__ | Threshold: __THRESHOLD__ | Method: __METHOD__ | __ACTIVE__</p>
+          </div>
+          <div class="chip-row">
+            <a class="chip" href="/">NGraph Home</a>
+            <a class="chip" href="/kg/downloads">KG Files</a>
+          </div>
+        </div>
+        <div class="nav">__NAV__</div>
+      </header>
+      <main class="kg-main">
+        __BODY__
+      </main>
+      <script>
+      const PAGE = window.__KG_PAGE__ || {};
+      function escapeHtml(text) {
+        return String(text == null ? "" : text).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+      }
+      function tableHtml(rows) {
+        if (!rows || !rows.length) return '<div class="muted" style="padding:12px;">No rows.</div>';
+        const cols = Object.keys(rows[0]);
+        const head = cols.map(c => `<th>${escapeHtml(c)}</th>`).join("");
+        const body = rows.map(r => `<tr>${cols.map(c => `<td>${r[c] == null ? "" : r[c]}</td>`).join("")}</tr>`).join("");
+        return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      }
+      async function fetchJson(url) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return await res.json();
+      }
+      __SCRIPT__
+      </script>
+    </body>
+    </html>
+    """
+    html_text = template.replace("__TITLE__", html.escape(active_label + " | NGraph KG"))
+    html_text = html_text.replace("__CSS__", base_css)
+    html_text = html_text.replace("__PAGE_DATA__", page_data)
+    html_text = html_text.replace("__BRANCH__", html.escape(app.branch))
+    html_text = html_text.replace("__THRESHOLD__", html.escape(PRIMARY_THRESHOLD))
+    html_text = html_text.replace("__METHOD__", html.escape(PRIMARY_METHOD))
+    html_text = html_text.replace("__ACTIVE__", html.escape(active_label))
+    html_text = html_text.replace("__NAV__", nav_html)
+    html_text = html_text.replace("__BODY__", body)
+    html_text = html_text.replace("__SCRIPT__", script)
+    return html_text
+
 
 class BrowserHandler(BaseHTTPRequestHandler):
     app: NGraphBrowser
@@ -1637,7 +2882,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self.server.app.logger.info("%s - %s", self.client_address[0], format % args)
 
     def send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
-        data = json.dumps(payload, default=normalize_value, indent=2, sort_keys=True).encode("utf-8")
+        data = json.dumps(json_ready(payload), indent=2, sort_keys=True, allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store, max-age=0")
@@ -1663,6 +2908,49 @@ class BrowserHandler(BaseHTTPRequestHandler):
         app = self.server.app
 
         try:
+            if path.startswith("/assets/"):
+                rel = Path(unquote(path[len("/assets/") :]))
+                asset_root = (PROJECT_ROOT / "web_assets").resolve()
+                asset_path = (asset_root / rel).resolve()
+                if asset_root not in asset_path.parents and asset_path != asset_root:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                if not asset_path.exists() or not asset_path.is_file():
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                content_type = "application/octet-stream"
+                if asset_path.suffix == ".js":
+                    content_type = "application/javascript; charset=utf-8"
+                elif asset_path.suffix == ".css":
+                    content_type = "text/css; charset=utf-8"
+                elif asset_path.suffix == ".svg":
+                    content_type = "image/svg+xml"
+                self.send_text(asset_path.read_text(encoding="utf-8"), content_type=content_type)
+                return
+            if path == "/kg/file":
+                name = Path(unquote(params.get("name", [""])[0]))
+                file_root = app.kg_dir.resolve()
+                file_path = (file_root / name).resolve()
+                if file_root not in file_path.parents and file_path != file_root:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                if not file_path.exists() or not file_path.is_file():
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                content_type = "text/plain; charset=utf-8"
+                if file_path.suffix == ".json":
+                    content_type = "application/json; charset=utf-8"
+                elif file_path.suffix in {".tsv", ".txt", ".md"}:
+                    content_type = "text/plain; charset=utf-8"
+                self.send_text(file_path.read_text(encoding="utf-8"), content_type=content_type)
+                return
+            if path in {"/kg", "/kg/search", "/kg/explore", "/kg/paths", "/kg/node", "/kg/downloads"}:
+                self.send_text(render_kg_page(app, path, params), content_type="text/html; charset=utf-8")
+                return
             if path == "/":
                 self.send_text(HTML_PAGE, content_type="text/html; charset=utf-8")
                 return
@@ -1671,6 +2959,46 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/health":
                 self.send_json(app.health())
+                return
+            if path == "/api/kg/schema":
+                self.send_json(app.kg_schema())
+                return
+            if path == "/api/kg/search":
+                self.send_json(
+                    app.kg_search_nodes(
+                        query=params.get("query", [""])[0],
+                        node_type=params.get("node_type", [""])[0],
+                        limit=safe_int(params.get("limit", ["50"])[0], 50),
+                        offset=safe_int(params.get("offset", ["0"])[0], 0),
+                    )
+                )
+                return
+            if path == "/api/kg/node":
+                self.send_json(app.kg_node_detail(params.get("id", [""])[0]))
+                return
+            if path == "/api/kg/neighborhood":
+                self.send_json(
+                    app.kg_neighborhood(
+                        node_id=params.get("id", [""])[0],
+                        depth=safe_int(params.get("depth", ["1"])[0], 1),
+                        edge_type=params.get("edge_type", [""])[0],
+                        node_type=params.get("node_type", [""])[0],
+                        limit=safe_int(params.get("limit", ["150"])[0], 150),
+                    )
+                )
+                return
+            if path == "/api/kg/paths":
+                self.send_json(
+                    app.kg_path(
+                        source=params.get("source", [""])[0],
+                        target=params.get("target", [""])[0],
+                        max_depth=safe_int(params.get("max_depth", ["4"])[0], 4),
+                        edge_type=params.get("edge_type", [""])[0],
+                    )
+                )
+                return
+            if path == "/api/kg/downloads":
+                self.send_json(app.kg_downloads())
                 return
             if path == "/api/cards":
                 rows = app.filter_cards(
@@ -1735,6 +3063,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if path == "/api/embedding":
                 focus = params.get("focus", [""])[0]
                 payload = app.build_embedding_payload(focus=focus)
+                self.send_json(payload)
+                return
+            if path == "/api/kg":
+                site = params.get("site", [""])[0]
+                taxon = params.get("taxon", [""])[0]
+                limit = int(params.get("limit", ["40"])[0])
+                payload = app.build_kg_payload(site=site, taxon=taxon, limit=limit)
                 self.send_json(payload)
                 return
             if path == "/api/query":
