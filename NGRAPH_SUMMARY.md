@@ -1,5 +1,7 @@
 # NGraph Current Summary
 
+> **Current-state audit (2026-10-05):** The latest code/artifact review is in [REPOSITORY_REVIEW_2026-10-05.md](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md). The active checkout is `/maps/projects/caeg/people/gfx654/Projects/NGraph`; `/src` is absent here. The graph-learning histories in the threshold benchmark are five-epoch smoke runs, the July file-backed KG needs integrity/schema work, and the dashboard has endpoint probes but no completed browser UI validation. Read the review before treating older “current” labels, module calls, scores, or KG paths as validated.
+
 - Last updated: 2026-06-19 07:36:54 UTC
 - Seed: `42`
 - Active workstream: `abundance_thresholding`
@@ -117,3 +119,23 @@ Current interpretation:
 3. Check module stability, functional coherence, and held-out reconstruction behavior before biological interpretation.
 4. Validate the deep-knowledge discovery scripts and canonical query report.
 5. Keep the post-deep diagnostics in sync with the summary report and plots.
+
+## Audited current state (2026-10-05)
+
+See [the detailed repository review](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md) for code/artifact evidence and acceptance criteria. This summary preserves earlier run descriptions above. The module-discovery chain and file-backed KG/browser substrate are implemented, but neither establishes a validated biological discovery prototype yet. The twelve `abundance_thresholding` VGAE and DiffPool runs have five-epoch smoke histories; the KG has dangling control edges and missing GeoB proxy rows; dashboard probes found defects in neighborhood traversal, limits and relation filtering. Current modeling and query layers do not consume the KG. The next prototype should fix reproducibility/model/KG-integrity defects, implement explicit evidence-backed metapaths, validate a separate KG learning task on clean holdout, and repair browser/API behavior. No sediment time-warp correction or transition-state learner is implemented.
+
+
+## MVP implementation update — 2026-10-05
+
+A bounded KG/module prototype is now implemented. The requested read-assisted prevalence filter retains 1,797 taxa in a TAD-only CLR matrix across 200 samples. Of these, 438 have positive TAD evidence and form seven exploratory VGAE groups; all retained taxa remain represented in the KG with read support distinguished from TAD abundance. The KG validates identifiers and references, preserves observation provenance and unmatched proxies, and exposes typed connectivity searches at `http://localhost:10290/kg/paths` with two preset demonstration questions.
+
+The runnable entry point is `bash run_mvp.sh`; `NG_ENV_PREFIX` selects an existing environment, and `NG_BRANCH` selects a fresh output branch. See [implementation plan](LEARNING_AND_NOTES/MVP_IMPLEMENTATION_PLAN_2026-10-05.md) and [verified results and limitations](LEARNING_AND_NOTES/MVP_IMPLEMENTATION_RESULTS_2026-10-05.md). Earlier review sections describe the state before these fixes. Proxy units, GeoB aliases and matching tolerances still need scientific review; typed search is implemented, while KG machine learning and publication-level module validation remain future work.
+
+
+## Current MVP — permissive mixed sensitivity (2026-10-05)
+
+The current MVP launcher uses `hybrid_aggregated_tad_then_read`: damaged source rows pass the >=100-read gate before aggregation; aggregated TAD values take precedence, with read abundance as fallback for both prevalence (>=10 samples) and the CLR matrix. The mixed run retains 1,797 taxa and 214 samples and learns six exploratory VGAE modules over all retained taxa. The TAD-only run remains a separate comparison. Generic mixed abundance and native TAD-only matrices are saved separately.
+
+The mixed KG now uses curated XRF, user-confirmed GeoB physical-core aliases, depth matches within 0.5 cm and bracketed linear interpolation without extrapolation. Its schema, source-value reconstruction, coverage accounting and GeoB library consistency checks pass. Unknown native units and large interpolation gaps remain explicit. The current browser is `http://localhost:10291/kg/paths`; port 10290 retains the earlier TAD-only prototype. See [current mixed sensitivity and KG report](LEARNING_AND_NOTES/KG_SUBSTRATE_AND_MIXED_SENSITIVITY_2026-10-05.md).
+
+Run a fresh mixed MVP with `bash run_mvp.sh`. To reproduce the TAD-only comparison, use `NG_ABUNDANCE_MODE=hybrid_prevalence_tad_matrix bash run_mvp.sh`. Both commands create a fresh run branch by default.

@@ -1,0 +1,90 @@
+variable	unit	unit_status	unit_evidence
+al	unspecified_native_unit	unresolved	Source does not declare a physical unit
+avg_len_derep	unspecified_native_unit	unresolved	Source does not declare a physical unit
+avg_leng_initial	unspecified_native_unit	unresolved	Source does not declare a physical unit
+ba	unspecified_native_unit	unresolved	Source does not declare a physical unit
+benthic_foraminifera_concentration_n_per_gram_gt_150um	count_per_gram	header_declared	Source column declares n_per_gram
+br	unspecified_native_unit	unresolved	Source does not declare a physical unit
+ca	unspecified_native_unit	unresolved	Source does not declare a physical unit
+ca_fe	unspecified_native_unit	unresolved	Source does not declare a physical unit
+ca_sr	unspecified_native_unit	unresolved	Source does not declare a physical unit
+ce	unspecified_native_unit	unresolved	Source does not declare a physical unit
+cl	unspecified_native_unit	unresolved	Source does not declare a physical unit
+cr	unspecified_native_unit	unresolved	Source does not declare a physical unit
+cu	unspecified_native_unit	unresolved	Source does not declare a physical unit
+d13c_per_mil	per_mille	header_declared	Source column declares per_mil or isotope VPDB; scale documented in historical plots
+density	unspecified_native_unit	unresolved	Source does not declare a physical unit
+depth_in_core_cm	cm	user_confirmed	User confirmed 2026-10-05; source column names
+derep	count	header_declared	Count field in source
+eu	unspecified_native_unit	unresolved	Source does not declare a physical unit
+fe	unspecified_native_unit	unresolved	Source does not declare a physical unit
+g_bulloides_pct	percent	header_declared	Source column declares pct or percent_weight
+g_glutinata_pct	percent	header_declared	Source column declares pct or percent_weight
+g_glutinata_with_bulla_pct	percent	header_declared	Source column declares pct or percent_weight
+g_glutinata_without_bulla_pct	percent	header_declared	Source column declares pct or percent_weight
+g_inflata_pct	percent	header_declared	Source column declares pct or percent_weight
+g_scitula_pct	percent	header_declared	Source column declares pct or percent_weight
+g_truncatulinoides_dex	unspecified_native_unit	unresolved	Source does not declare a physical unit
+g_uvula_pct	percent	header_declared	Source column declares pct or percent_weight
+hf	unspecified_native_unit	unresolved	Source does not declare a physical unit
+initial	count	header_declared	Count field in source
+k	unspecified_native_unit	unresolved	Source does not declare a physical unit
+la	unspecified_native_unit	unresolved	Source does not declare a physical unit
+library_concentration	unspecified_native_unit	unresolved	Source does not declare a physical unit
+low_damage_index	unspecified_native_unit	unresolved	Source does not declare a physical unit
+mg	unspecified_native_unit	unresolved	Source does not declare a physical unit
+mg_ca_subsst_degc_jonkers_2013_calibration	degree_Celsius	header_declared	Source column contains degc
+mg_ca_subsst_degc_kozdon_2009_calibration	degree_Celsius	header_declared	Source column contains degc
+mis	unspecified_native_unit	unresolved	Source does not declare a physical unit
+mn	unspecified_native_unit	unresolved	Source does not declare a physical unit
+mo	unspecified_native_unit	unresolved	Source does not declare a physical unit
+n_incompta_pct	percent	header_declared	Source column declares pct or percent_weight
+n_pachyderma_d13c_vpdb_corr	per_mille_VPDB	header_declared	Source column declares per_mil or isotope VPDB; scale documented in historical plots
+n_pachyderma_d18o_vpdb_corr	per_mille_VPDB	header_declared	Source column declares per_mil or isotope VPDB; scale documented in historical plots
+n_pachyderma_pct	percent	header_declared	Source column declares pct or percent_weight
+n_rows_sample	unspecified_native_unit	unresolved	Source does not declare a physical unit
+nb	unspecified_native_unit	unresolved	Source does not declare a physical unit
+nd	unspecified_native_unit	unresolved	Source does not declare a physical unit
+ni	unspecified_native_unit	unresolved	Source does not declare a physical unit
+o_universa	unspecified_native_unit	unresolved	Source does not declare a physical unit
+p	unspecified_native_unit	unresolved	Source does not declare a physical unit
+p_to_b_ratio	dimensionless	header_declared	Explicit ratio in source
+planktonic_foraminifera_concentration_n_per_gram_gt_150um	count_per_gram	header_declared	Source column declares n_per_gram
+polar_planktonic_spp_pct	percent	header_declared	Source column declares pct or percent_weight
+ratio_greenland_to_iceland	dimensionless	header_declared	Explicit ratio in source
+rb	unspecified_native_unit	unresolved	Source does not declare a physical unit
+s	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sample_A_b_iqr	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sample_A_b_median	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sample_Zfit_iqr	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sample_Zfit_median	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sample_local_fixed_rate	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sample_rho_iqr	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sample_rho_median	unspecified_native_unit	unresolved	Source does not declare a physical unit
+si	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sm	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sr	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sst	degree_Celsius	inferred_temperature	SST temperature; exact instrument/calibration units require source confirmation
+sst_mgca_jonkers_2013	degree_Celsius	inferred_temperature	SST temperature; exact instrument/calibration units require source confirmation
+sst_mgca_kozdon_2009	degree_Celsius	inferred_temperature	SST temperature; exact instrument/calibration units require source confirmation
+sst_uk37_alkenone	degree_Celsius	inferred_temperature	SST temperature; exact instrument/calibration units require source confirmation
+sub_polar_planktonic_species_pct	percent	header_declared	Source column declares pct or percent_weight
+sum_expandable_clays	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sum_greenland	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sum_iceland	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sum_illites_micas	unspecified_native_unit	unresolved	Source does not declare a physical unit
+sum_montmorillonites_smectites	unspecified_native_unit	unresolved	Source does not declare a physical unit
+t_quinqueloba_pct	percent	header_declared	Source column declares pct or percent_weight
+temp	unspecified_native_unit	unresolved	Source does not declare a physical unit
+ti	unspecified_native_unit	unresolved	Source does not declare a physical unit
+ti_ca	unspecified_native_unit	unresolved	Source does not declare a physical unit
+tm	unspecified_native_unit	unresolved	Source does not declare a physical unit
+toc_percent_weight	percent_by_weight	header_declared	Source column declares pct or percent_weight
+total_planktonic_foraminifera_count	count	header_declared	Count field in source
+transitional_planktonic_species_pct	percent	header_declared	Source column declares pct or percent_weight
+v	unspecified_native_unit	unresolved	Source does not declare a physical unit
+y	unspecified_native_unit	unresolved	Source does not declare a physical unit
+y_bp	year_before_present	user_confirmed	User confirmed 2026-10-05; source column names
+yb	unspecified_native_unit	unresolved	Source does not declare a physical unit
+zn	unspecified_native_unit	unresolved	Source does not declare a physical unit
+zr	unspecified_native_unit	unresolved	Source does not declare a physical unit

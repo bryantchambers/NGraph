@@ -44,6 +44,8 @@ write_combo_export <- function(thr, method) {
   site_summary_path <- file.path(matrix_dirs$tables, "ngraph_site_graph_summary.tsv")
   super_edge_path <- file.path(matrix_dirs$tables, paste0("ngraph_super_graph_edges_", method, ".tsv"))
 
+  generic_abund <- file.path(matrix_dirs$matrices, "ngraph_tax_abundance_taxa_by_sample.rds")
+  if (file.exists(generic_abund)) abund_path <- generic_abund
   required <- c(clr_path, abund_path, sample_qc_path, taxa_meta_path, site_summary_path, super_edge_path)
   if (!all(file.exists(required))) {
     ng_log(LOG, "Skipping ", dirs$threshold, "/", method, ": missing source artifacts")
@@ -66,6 +68,11 @@ write_combo_export <- function(thr, method) {
   sample_qc[, core := as.character(core)]
   sample_qc <- sample_qc[order(match(sample, rownames(clr)))]
 
+  if (Sys.getenv("NG_TAD_SUPPORTED_ONLY", "false") == "true") {
+    supported <- rownames(abund)[rowSums(abund > 0) > 0]
+    clr <- clr[, intersect(colnames(clr), supported), drop = FALSE]
+    abund <- abund[colnames(clr), , drop = FALSE]
+  }
   taxa <- colnames(clr)
   taxa_meta <- merge(
     data.table(taxon = taxa),
@@ -92,7 +99,7 @@ write_combo_export <- function(thr, method) {
     mean_abs_clr = colMeans(abs(clr), na.rm = TRUE),
     max_abs_clr = apply(abs(clr), 2, max, na.rm = TRUE),
     mean_abundance = rowMeans(abund, na.rm = TRUE),
-    prevalence_samples = taxon_presence_samples / nrow(abund),
+    prevalence_samples = taxon_presence_samples / ncol(abund),
     n_samples = taxon_presence_samples,
     n_cores = rowSums(taxon_presence_cores, na.rm = TRUE),
     prevalence_cores = rowSums(taxon_presence_cores, na.rm = TRUE) / length(NG_PARAMS$all_cores)
@@ -101,7 +108,8 @@ write_combo_export <- function(thr, method) {
   numeric_taxon_cols <- select_numeric(taxon_nodes, drop = c("threshold", "taxon_index"))
   taxon_nodes <- taxon_nodes[, c("taxon", "threshold", "taxon_index", setdiff(names(taxon_nodes), c("taxon", "threshold", "taxon_index"))), with = FALSE]
 
-  site_graph_summary <- site_summary[method_suffix == method]
+  selected_method <- method
+  site_graph_summary <- site_summary[method_suffix == selected_method]
   if ("threshold" %in% names(site_graph_summary)) {
     site_graph_summary[, graph_threshold := threshold]
     site_graph_summary[, threshold := NULL]
@@ -198,7 +206,7 @@ write_combo_export <- function(thr, method) {
       max_abs_clr = apply(abs(clr_core), 2, max, na.rm = TRUE),
       temporal_var_clr = apply(clr_core, 2, var, na.rm = TRUE),
       prevalence = rowMeans(abund_core > 0, na.rm = TRUE),
-      mean_tax_abund_tad = rowMeans(abund_core, na.rm = TRUE)
+      mean_tax_abundance = rowMeans(abund_core, na.rm = TRUE)
     )
     edge_dt <- edge_dt[is.finite(prevalence) & prevalence > 0]
     edge_dt[, edge_type := "taxon_site_context"]
@@ -218,6 +226,8 @@ write_combo_export <- function(thr, method) {
     threshold = thr,
     method = method,
     seed = NG_PARAMS$seed,
+    abundance_mode = NG_PARAMS$abundance_mode,
+    analysis_status = if (NG_PARAMS$abundance_mode == "hybrid_aggregated_tad_then_read") "permissive_mixed_abundance_sensitivity" else "tad_only",
     source_files = list(
       clr = clr_path,
       abundance = abund_path,

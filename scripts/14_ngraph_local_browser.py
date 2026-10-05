@@ -29,6 +29,8 @@ if str(SCRIPT_DIR) not in sys.path:
 from ngraph_discovery_common import combo_root, deep_modules_root, kg_root, knowledge_root, read_json, read_table, safe_slug  # noqa: E402
 
 
+from ngraph_kg_connectivity import ConnectivityIndex, CATALOG
+
 SEED = 42
 np.random.seed(SEED)
 
@@ -425,15 +427,16 @@ class NGraphBrowser:
         for name in sorted((self.discovery_dir / "reports").glob("*.md")):
             reports.append({"name": name.name, "path": str(name)})
         phase_status = {
-            "link_prediction": "complete" if not self.link_predictions.empty else "missing",
-            "evidence_cards": "complete" if not self.cards.empty else "missing",
-            "retrieval_index": "complete" if self.card_matrix is not None else "missing",
-            "query_engine": "complete" if not self.query_results.empty else "missing",
-            "knowledge_graph": "complete" if not self.kg_nodes.empty else "missing",
-            "browser": "complete",
+            "link_prediction": "available_exploratory" if not self.link_predictions.empty else "missing",
+            "evidence_cards": "available_unvalidated" if not self.cards.empty else "missing",
+            "retrieval_index": "available_unvalidated" if self.card_matrix is not None else "missing",
+            "query_engine": "available_unvalidated" if not self.query_results.empty else "missing",
+            "knowledge_graph": "structural_validation_passed" if optional_json(self.kg_dir / "tables" / "kg_validation.json").get("status") == "structural_validation_passed" else ("available_unvalidated" if not self.kg_nodes.empty else "missing"),
+            "browser": "serving",
         }
         return {
             "branch": self.branch,
+            "analysis_label": self.analysis_label(),
             "seed": SEED,
             "primary_threshold": PRIMARY_THRESHOLD,
             "primary_method": PRIMARY_METHOD,
@@ -1063,6 +1066,7 @@ class NGraphBrowser:
         return {
             "status": "ok",
             "branch": self.branch,
+            "analysis_label": self.analysis_label(),
             "project_root": str(PROJECT_ROOT),
             "discovery_dir": str(self.discovery_dir),
             "kg_dir": str(self.kg_dir),
@@ -1275,8 +1279,8 @@ class NGraphBrowser:
                         break
                 if len(edge_ids) >= limit * 5:
                     break
-            visited.update(next_frontier)
             frontier = next_frontier - visited
+            visited.update(next_frontier)
             if len(visited) >= limit:
                 break
         if node_type:
@@ -1284,7 +1288,9 @@ class NGraphBrowser:
             visited = set(node_frame["node_id"].astype(str).tolist()) | {focus}
         else:
             node_frame = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(visited)].copy()
-        edge_frame = self.kg_edges[self.kg_edges["edge_id"].astype(str).isin(set(edge_ids))].copy()
+        node_frame = node_frame.head(max(1, min(limit, 1000)))
+        retained_ids = set(node_frame["node_id"].astype(str))
+        edge_frame = self.kg_edges[self.kg_edges["edge_id"].astype(str).isin(set(edge_ids)) & self.kg_edges["source_id"].astype(str).isin(retained_ids) & self.kg_edges["target_id"].astype(str).isin(retained_ids)].copy()
         if not edge_frame.empty and limit > 0:
             sort_cols = [c for c in ["weight", "value"] if c in edge_frame.columns]
             if sort_cols:
@@ -1310,6 +1316,18 @@ class NGraphBrowser:
             "summary": summary,
             "truncated": len(node_frame) >= limit or len(edge_frame) >= limit * 5,
         }
+
+    def analysis_label(self):
+        manifest = optional_json(PROJECT_ROOT / "results" / "ngraph" / self.branch / "run_manifest.json")
+        mode = manifest.get("settings", {}).get("NG_ABUNDANCE_MODE", "tad_only")
+        if mode in {"hybrid_aggregated_tad_then_read", "hybrid_tad_then_read"}:
+            return "Permissive mixed-abundance sensitivity analysis: TAD where positive, read fallback otherwise"
+        return "TAD-only abundance analysis"
+
+    def kg_connectivity(self, source, target, metapath, limit=20):
+        if not hasattr(self, "connectivity_index"):
+            self.connectivity_index = ConnectivityIndex(self.kg_nodes.to_dict("records"), self.kg_edges.to_dict("records"))
+        return self.connectivity_index.search(self.resolve_kg_node_id(source), self.resolve_kg_node_id(target), metapath, limit)
 
     def kg_path(self, source: str, target: str, max_depth: int = 4, edge_type: str = "") -> Dict[str, Any]:
         source_id = self.resolve_kg_node_id(source)
@@ -1377,6 +1395,15 @@ class NGraphBrowser:
         for rel in [
             "kg_manifest.json",
             "reports/KG_SCHEMA_AND_IMPORT_REPORT.md",
+            "tables/kg_substrate_validation.json",
+            "tables/kg_proxy_source_observations.tsv",
+            "tables/kg_import_coverage.tsv",
+            "tables/kg_proxy_matching_coverage.tsv",
+            "tables/kg_variable_units.tsv",
+            "tables/kg_observations.tsv",
+            "tables/kg_unmatched_proxy_observations.tsv",
+            "tables/kg_validation.json",
+            "tables/mvp_validation_and_demo.json",
             "tables/kg_nodes.tsv",
             "tables/kg_edges.tsv",
             "tables/kg_measurements.tsv",
@@ -1388,6 +1415,7 @@ class NGraphBrowser:
             files.append({"name": rel, "exists": path.exists(), "size": path.stat().st_size if path.exists() else 0, "path": str(path)})
         return {
             "branch": self.branch,
+            "analysis_label": self.analysis_label(),
             "kg_dir": str(self.kg_dir),
             "files": files,
             "manifest": self.kg_manifest,
@@ -1653,7 +1681,8 @@ HTML_PAGE = """<!doctype html>
     <div class="title">
       <div>
         <h1>NGraph Local Browser</h1>
-        <div class="muted">Deep knowledge discovery, local-first, bound to 0.0.0.0 for network access.</div>
+        <div class="muted">Deep knowledge discovery</div>
+        <div id="analysis-policy" class="muted"></div>
       </div>
       <div class="meta-stack">
         <div class="meta" id="header-meta">Loading summary...</div>
@@ -2022,6 +2051,7 @@ HTML_PAGE = """<!doctype html>
         ["Combos", (summary.combos || []).length],
       ];
       document.getElementById("stats").innerHTML = stats.map(([label, value]) => `<div class="stat"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`).join("");
+      document.getElementById("analysis-policy").textContent = summary.analysis_label || "";
       document.getElementById("phase-status").innerHTML = Object.entries(summary.phase_status || {}).map(([k, v]) => chip(`${k}: ${v}`, v === "complete" ? "var(--accent)" : "var(--warning)")).join("");
       document.getElementById("questions").innerHTML = state.questions.map((q, i) => `<span class="chip" style="cursor:pointer" onclick="setCanonicalQuery(${i})">${escapeHtml(q)}</span>`).join("");
 
@@ -2684,7 +2714,16 @@ def render_kg_page(app: NGraphBrowser, page: str, params: Dict[str, List[str]]) 
     elif page == "/kg/paths":
         body = """
         <section class='card'>
-          <h2 class='title-2'>Paths</h2>
+          <h2 class='title-2'>Typed connectivity search</h2>
+          <p>Counts and degree-weighted scores describe connectivity. Open the evidence below to inspect source records. Module membership is exploratory.</p>
+          <div class='controls'>
+            <select id='kg-metapath'><option value='site_taxon'>Site → sample → taxon</option><option value='taxon_proxy'>Taxon ← sample → measurement → proxy</option><option value='site_module_bridge'>Core sites linked through taxa and a module</option><option value='shared_module'>Taxon → module ← taxon</option></select>
+            <button onclick='loadKgConnectivity()'>Search typed connections</button>
+          </div>
+          <div class='controls'><button onclick='loadKgDemo(0)'>Demo: taxon and SST evidence</button><button onclick='loadKgDemo(1)'>Demo: cores linked through modules</button></div>
+          <div id='kg-connectivity-summary'></div>
+          <pre id='kg-connectivity-evidence' style='max-height:400px;overflow:auto;white-space:pre-wrap;'></pre>
+          <h3 class='title-2'>Shortest path explorer</h3>
           <div class='controls'>
             <input id='kg-path-source' placeholder='Source node id' />
             <input id='kg-path-target' placeholder='Target node id' />
@@ -2704,6 +2743,23 @@ def render_kg_page(app: NGraphBrowser, page: str, params: Dict[str, List[str]]) 
         """
         script = """
         let kgPathCy = null;
+        async function loadKgDemo(index) {
+          const data = await fetchJson('/api/kg/demo');
+          const q = (data.questions || [])[index];
+          if (!q) return;
+          document.getElementById("kg-path-source").value = q.source;
+          document.getElementById("kg-path-target").value = q.target;
+          document.getElementById("kg-metapath").value = q.metapath;
+          await loadKgConnectivity();
+        }
+        async function loadKgConnectivity() {
+          const source = document.getElementById("kg-path-source").value;
+          const target = document.getElementById("kg-path-target").value;
+          const metapath = document.getElementById("kg-metapath").value;
+          const data = await fetchJson(`/api/kg/connectivity?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}&metapath=${encodeURIComponent(metapath)}`);
+          document.getElementById("kg-connectivity-summary").textContent = data.status === "missing" ? "Choose existing source and target node IDs or labels." : `Paths: ${data.path_count}; DWPC: ${data.dwpc}; count status: ${data.count_status}; evidence paths shown: ${(data.paths || []).length}`;
+          document.getElementById("kg-connectivity-evidence").textContent = JSON.stringify(data.paths || [], null, 2);
+        }
         async function loadKgPath() {
           const source = document.getElementById("kg-path-source").value || "";
           const target = document.getElementById("kg-path-target").value || "";
@@ -2828,6 +2884,7 @@ def render_kg_page(app: NGraphBrowser, page: str, params: Dict[str, List[str]]) 
         <div class="head">
           <div>
             <h1>__TITLE__</h1>
+            <p><strong>__ANALYSIS_LABEL__</strong></p>
             <p>Branch: __BRANCH__ | Threshold: __THRESHOLD__ | Method: __METHOD__ | __ACTIVE__</p>
           </div>
           <div class="chip-row">
@@ -2865,6 +2922,7 @@ def render_kg_page(app: NGraphBrowser, page: str, params: Dict[str, List[str]]) 
     html_text = template.replace("__TITLE__", html.escape(active_label + " | NGraph KG"))
     html_text = html_text.replace("__CSS__", base_css)
     html_text = html_text.replace("__PAGE_DATA__", page_data)
+    html_text = html_text.replace("__ANALYSIS_LABEL__", html.escape(app.analysis_label()))
     html_text = html_text.replace("__BRANCH__", html.escape(app.branch))
     html_text = html_text.replace("__THRESHOLD__", html.escape(PRIMARY_THRESHOLD))
     html_text = html_text.replace("__METHOD__", html.escape(PRIMARY_METHOD))
@@ -2960,6 +3018,20 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if path == "/api/health":
                 self.send_json(app.health())
                 return
+            if path == "/api/kg/demo":
+                demo = optional_json(app.kg_dir / "tables" / "mvp_validation_and_demo.json")
+                self.send_json({"questions": [{"question": q["question"], **{k: q["answer"][k] for k in ["source", "target", "metapath"]}} for q in demo.get("questions", [])]})
+                return
+            if path == "/api/kg/metapaths":
+                self.send_json({"metapaths": {k: [{"predicate": p, "direction": d} for p,d in v] for k,v in CATALOG.items()}})
+                return
+            if path == "/api/kg/connectivity":
+                metapath = params.get("metapath", ["site_taxon"])[0]
+                if metapath not in CATALOG:
+                    self.send_json({"error": "Unknown metapath", "choices": list(CATALOG)}, status=400)
+                    return
+                self.send_json(app.kg_connectivity(params.get("source", [""])[0], params.get("target", [""])[0], metapath, safe_int(params.get("limit", ["20"])[0], 20)))
+                return
             if path == "/api/kg/schema":
                 self.send_json(app.kg_schema())
                 return
@@ -3017,7 +3089,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 relation_type = params.get("relation_type", [""])[0]
                 focus = params.get("focus", [""])[0]
                 context = app.combo_context(threshold, method)
-                frame = context["link_taxon_taxon"].copy()
+                frame = context["link_taxon_site" if relation_type == "taxon_site" else "link_taxon_taxon"].copy()
                 if frame.empty:
                     frame = app.link_predictions.copy()
                 if relation_type and "relation_type" in frame.columns:
@@ -3062,7 +3134,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/embedding":
                 focus = params.get("focus", [""])[0]
-                payload = app.build_embedding_payload(focus=focus)
+                payload = app.build_embedding_payload(focus=focus, limit=max(1, min(safe_int(params.get("limit", ["800"])[0], 800), 2000)))
                 self.send_json(payload)
                 return
             if path == "/api/kg":
@@ -3107,7 +3179,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
 
-    logger = setup_logger(PROJECT_ROOT / "logs" / "14_ngraph_local_browser.log")
+    logger = setup_logger(PROJECT_ROOT / "logs" / os.environ.get("NG_LOG_SCOPE", "") / "14_ngraph_local_browser.log")
     logger.info("Starting local browser")
     logger.info("Seed: %d", SEED)
     logger.info("Host: %s Port: %d", args.host, args.port)

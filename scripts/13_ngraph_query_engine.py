@@ -476,7 +476,7 @@ def main() -> int:
     parser.add_argument("--top-k", type=int, default=10)
     args = parser.parse_args()
 
-    logger = setup_logger(project_root() / "logs" / "13_ngraph_query_engine.log")
+    logger = setup_logger(project_root() / "logs" / os.environ.get("NG_LOG_SCOPE", "") / "13_ngraph_query_engine.log")
     logger.info("Starting query engine")
     logger.info("Seed: %d", SEED)
     logger.info("Package versions: numpy %s, pandas %s, scipy %s, sklearn %s", np.__version__, pd.__version__, scipy.__version__, sklearn.__version__)

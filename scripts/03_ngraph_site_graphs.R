@@ -94,7 +94,7 @@ write_site_graph <- function(edges, vertices, out_dirs, core_id, method_suffix, 
     edges = ecount(g),
     density = edge_density(g, loops = FALSE),
     components = components(g)$no,
-    threshold = threshold_value,
+    association_cutoff = threshold_value,
     top_variable_taxa = top_taxa_n
   )
 }
@@ -115,6 +115,11 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     }
 
     mat <- clr[samples, , drop = FALSE]
+    if (Sys.getenv("NG_TAD_SUPPORTED_ONLY", "false") == "true") {
+      tad <- readRDS(file.path(dirs$matrices, "ngraph_tax_abund_tad_taxa_by_sample.rds"))
+      supported <- rownames(tad)[rowSums(tad[, samples, drop = FALSE] > 0) > 0]
+      mat <- mat[, intersect(colnames(mat), supported), drop = FALSE]
+    }
     vars <- apply(mat, 2, var, na.rm = TRUE)
     top_taxa <- names(sort(vars, decreasing = TRUE))[seq_len(min(NG_PARAMS$graph_top_variable_taxa, length(vars)))]
     mat <- mat[, top_taxa, drop = FALSE]
@@ -123,7 +128,7 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     vertices <- merge(vertices, taxa_meta, by = "taxon", all.x = TRUE, sort = FALSE)
     vertices[, name := taxon]
 
-    for (method_suffix in c("pearson", "bicor", "spearman")) {
+    for (method_suffix in intersect(NG_PARAMS$site_graph_methods, c("pearson", "bicor", "spearman"))) {
       method_label <- paste0(method_suffix, "_abs_threshold")
       edges <- build_correlation_edges(
         mat = mat,
@@ -151,7 +156,7 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
       ng_log(LOG, "Threshold ", thr, " built ", core_id, " ", toupper(method_suffix), " graph: ", nrow(vertices), " nodes, ", nrow(edges), " edges")
     }
 
-    if (minet_available) {
+    if (minet_available && "mi_aracne" %in% NG_PARAMS$site_graph_methods) {
       mim <- minet::build.mim(dataset = as.data.frame(mat), estimator = NG_PARAMS$minet_estimator)
       aracne_mat <- as.matrix(minet::aracne(mim, eps = NG_PARAMS$aracne_eps))
       diag(aracne_mat) <- 0

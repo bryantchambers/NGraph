@@ -205,3 +205,7 @@
   - v0 remains file-backed with TSV/JSON artifacts; no DuckDB, Neo4j, or RDF store yet.
   - Ontology linking begins as mapping fields and OntologyTerm rows, not full reasoning.
   - BGC/gene/allele/pathway nodes are schema placeholders until source tables are added.
+
+## Repository review update (2026-10-05)
+
+The code-grounded current status, implementation gaps, validation limits, and prioritized acceptance criteria are maintained in [REPOSITORY_REVIEW_2026-10-05.md](REPOSITORY_REVIEW_2026-10-05.md). This dated pointer supplements the historical planning and learning notes above; retain their original context when reading them.

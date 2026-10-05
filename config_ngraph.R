@@ -131,15 +131,15 @@ NG_PARAMS <- list(
   excluded_samples = c("LV3003046968"),
   abundance_column = "tax_abund_tad",
   raw_read_column = "n_reads",
-  abundance_mode = env_choice("NG_ABUNDANCE_MODE", choices = c("tad_only", "hybrid_tad_then_read"), default = "tad_only"),
+  abundance_mode = env_choice("NG_ABUNDANCE_MODE", choices = c("tad_only", "hybrid_tad_then_read", "hybrid_prevalence_tad_matrix", "hybrid_aggregated_tad_then_read"), default = "tad_only"),
   min_reads_gate = env_integer("NG_MIN_READS_GATE", default = 0L),
   clr_pseudocount = 0.5,
   prevalence_thresholds = {
     thr <- env_integer_csv("NG_PREVALENCE_THRESHOLDS", default = c(3L, 5L, 10L))
     if (length(thr) == 0) c(3L, 5L, 10L) else thr
   },
-  site_graph_methods = c("pearson", "bicor", "spearman", "mi_aracne"),
-  deep_module_methods = c("pearson", "bicor", "spearman", "mi_aracne"),
+  site_graph_methods = env_csv("NG_SITE_GRAPH_METHODS", c("pearson", "bicor", "spearman", "mi_aracne")),
+  deep_module_methods = env_csv("NG_SITE_GRAPH_METHODS", c("pearson", "bicor", "spearman", "mi_aracne")),
   deep_module_primary_threshold = env_integer("NG_PRIMARY_THRESHOLD", default = 5L),
   deep_module_primary_method = env_string("NG_PRIMARY_METHOD", default = "pearson"),
   deep_module_validation_core = "GeoB25202_R2",
@@ -151,7 +151,7 @@ NG_PARAMS <- list(
   retrieval_top_k = 20L,
   query_batch_size = 10L,
   graph_min_samples = 8L,
-  graph_top_variable_taxa = 500L,
+  graph_top_variable_taxa = env_integer("NG_GRAPH_TOP_VARIABLE_TAXA", 500L),
   cor_abs_threshold = 0.55,
   bicor_max_p_outliers = 1,
   minet_estimator = "spearman",
@@ -218,7 +218,7 @@ ng_deep_dirs <- function(threshold, method) {
 }
 
 ng_log_path <- function(step_name) {
-  file.path(NG$logs, paste0(step_name, ".log"))
+  file.path(NG$logs, Sys.getenv("NG_LOG_SCOPE", ""), paste0(step_name, ".log"))
 }
 
 ng_start_log <- function(log_file) {

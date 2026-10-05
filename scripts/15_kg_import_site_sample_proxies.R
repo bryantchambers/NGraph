@@ -87,12 +87,12 @@ dataset_sources <- data.table(
     "site_nodes"
   ),
   source_file = c(
-    "Source/ROCS/data/metadata_v5.tsv",
-    "Source/ROCS/data/combined_sst_proxies_separate_columns.csv",
-    "Source/ROCS/data/combined_foraminifera_geochem.tsv",
-    "Source/ROCS/data/geob25202_clean_proxies.tsv",
-    "Source/ROCS/data/combined_xrf_geochemistry_not_normalized.csv",
-    "Source/ROCS/results/microbial/damage/damage-classification-depositional/sample-baselines.tsv",
+    "data/metadata/metadata_v5.tsv",
+    "data/kg_feedstock/combined_sst_proxies_separate_columns.csv",
+    "data/kg_feedstock/combined_foraminifera_geochem.tsv",
+    "data/kg_feedstock/geob25202_clean_proxies.tsv",
+    "data/kg_feedstock/combined_xrf_geochemistry_curated.csv",
+    "data/kg_feedstock/sample-baselines.tsv",
     file.path(NG$deep_knowledge, "tables", "sample_taxon_abundance_long.tsv"),
     file.path(NG$deep_knowledge, "tables", "sample_taxon_clr_long.tsv"),
     file.path(module_root, "tables", "vgae_taxon_modules.tsv"),
@@ -117,7 +117,7 @@ read_src <- function(path) {
   }
 }
 
-sample_meta <- read_src("Source/ROCS/data/metadata_v5.tsv")
+sample_meta <- read_src("data/metadata/metadata_v5.tsv")
 sample_meta[, site_id := core_to_site(core)]
 sample_meta[, sample_id := label]
 sample_meta[, age_kyr := y_bp / 1000]
@@ -139,7 +139,7 @@ sample_nodes <- sample_meta[, .(
   derep,
   sst,
   source_table = "metadata_v5",
-  source_file = "Source/ROCS/data/metadata_v5.tsv",
+  source_file = "data/metadata/metadata_v5.tsv",
   branch = NG$branch
 )]
 
@@ -154,6 +154,7 @@ sample_lookup <- sample_meta[, .(
 
 direct_measurements <- function(dt, id_col, value_cols, source_table, source_file, match_method = "direct_sample") {
   dt <- copy(dt)
+  dt[, source_row := seq_len(.N)]
   dt[, sample_id := get(id_col)]
   if (!"core" %in% names(dt)) {
     dt <- merge(
@@ -170,7 +171,7 @@ direct_measurements <- function(dt, id_col, value_cols, source_table, source_fil
   dt[, site_id := fifelse(is.na(site_id), core_to_site(core), site_id)]
   melted <- melt(
     dt,
-    id.vars = intersect(c("sample_id", "site_id", "core", "label", "y_bp", "depth_in_core_cm", "age_kyr", "mis"), names(dt)),
+    id.vars = intersect(c("source_row", "sample_id", "site_id", "core", "label", "y_bp", "depth_in_core_cm", "age_kyr", "mis"), names(dt)),
     measure.vars = intersect(value_cols, names(dt)),
     variable.name = "variable",
     value.name = "value",
@@ -189,147 +190,78 @@ direct_measurements <- function(dt, id_col, value_cols, source_table, source_fil
   melted[is.finite(as.numeric(value))]
 }
 
+source("scripts/ngraph_proxy_matching.R")
+proxy_matching_results <- list()
 nearest_sample_match <- function(proxy, match_col, source_table, source_file, value_cols, sample_key = sample_lookup) {
-  proxy <- copy(proxy)
-  proxy[, site_id := core_to_site(core)]
-  proxy[, match_value := as.numeric(get(match_col))]
-  proxy <- proxy[!is.na(match_value) & is.finite(match_value)]
-  if (nrow(proxy) == 0) return(data.table())
-
-  pieces <- lapply(split(proxy, by = "core", drop = TRUE), function(part) {
-    core_id <- unique(part$core)
-    sam <- sample_key[core == core_id]
-    if (nrow(sam) == 0) return(NULL)
-    target <- as.numeric(sam[[match_col]])
-    target <- target[is.finite(target)]
-    if (length(target) == 0) return(NULL)
-    nearest_idx <- vapply(part$match_value, function(v) {
-      which.min(abs(target - v))
-    }, integer(1))
-    matched <- copy(part)
-    matched[, `:=`(
-      sample_id = sam$sample_id[nearest_idx],
-      site_id = sam$site_id[nearest_idx],
-      matched_core = sam$core[nearest_idx],
-      sample_match_value = target[nearest_idx],
-      match_delta = abs(match_value - target[nearest_idx]),
-      y_bp = sam$y_bp[nearest_idx],
-      depth_in_core_cm = sam$depth_in_core_cm[nearest_idx],
-      age_kyr = sam$age_kyr[nearest_idx]
-    )]
-    if (length(value_cols) > 0) {
-      keep_cols <- intersect(value_cols, names(matched))
-      long <- melt(
-        matched,
-        id.vars = intersect(c("sample_id", "site_id", "core", "y_bp", "depth_in_core_cm", "age_kyr", "match_delta", "sample_match_value"), names(matched)),
-        measure.vars = keep_cols,
-        variable.name = "variable",
-        value.name = "value",
-        na.rm = FALSE
-      )
-    } else {
-      long <- data.table()
-    }
-    if (nrow(long) == 0) return(NULL)
-    long[, dataset_id := paste0("dataset:", source_table)]
-    long[, `:=`(
-      source_table = source_table,
-      source_file = source_file,
-      match_method = ifelse(match_col == "y_bp", "nearest_age", "nearest_depth"),
-      match_delta = match_delta
-    )]
-    long[is.finite(as.numeric(value))]
-  })
-  rbindlist(pieces, fill = TRUE)
+  # Compatibility wrapper: all source tables now match physical core and depth.
+  result <- match_proxy_depth(proxy, sample_key, value_cols, source_table, source_file,
+    tolerance_cm = 0.5, gap_factor = as.numeric(Sys.getenv("NG_KG_LARGE_GAP_FACTOR", "3")))
+  proxy_matching_results[[source_table]] <<- result
+  result$values
 }
 
 long_measurements <- list()
 
 meta_numeric <- c("depth_in_core_cm", "y_bp", "library_concentration", "temp", "mis", "initial", "avg_leng_initial", "derep", "avg_len_derep", "sst")
-meta_meas <- direct_measurements(sample_meta, "sample_id", meta_numeric, "metadata_v5", "Source/ROCS/data/metadata_v5.tsv")
+meta_meas <- direct_measurements(sample_meta, "sample_id", meta_numeric, "metadata_v5", "data/metadata/metadata_v5.tsv")
 meta_meas[, measurement_group := "sample_metadata"]
 long_measurements[[length(long_measurements) + 1]] <- meta_meas
 
-sst <- read_src("Source/ROCS/data/combined_sst_proxies_separate_columns.csv")
+sst <- read_src("data/kg_feedstock/combined_sst_proxies_separate_columns.csv")
 sst_meas <- nearest_sample_match(
   sst,
   "depth_in_core_cm",
   "sst_proxies",
-  "Source/ROCS/data/combined_sst_proxies_separate_columns.csv",
+  "data/kg_feedstock/combined_sst_proxies_separate_columns.csv",
   c("sst_uk37_alkenone", "sst_mgca_jonkers_2013", "sst_mgca_kozdon_2009")
 )
 sst_meas[, measurement_group := "sst_proxy"]
 long_measurements[[length(long_measurements) + 1]] <- sst_meas
 
-foram <- read_src("Source/ROCS/data/combined_foraminifera_geochem.tsv")
+foram <- read_src("data/kg_feedstock/combined_foraminifera_geochem.tsv")
 foram_value_cols <- setdiff(names(foram), c("core", "depth_in_core_cm", "y_bp"))
 foram_meas <- nearest_sample_match(
   foram,
   "y_bp",
   "foraminifera_geochem",
-  "Source/ROCS/data/combined_foraminifera_geochem.tsv",
+  "data/kg_feedstock/combined_foraminifera_geochem.tsv",
   foram_value_cols
 )
 foram_meas[, measurement_group := "foraminifera"]
 long_measurements[[length(long_measurements) + 1]] <- foram_meas
 
-geob <- read_src("Source/ROCS/data/geob25202_clean_proxies.tsv")
+geob <- read_src("data/kg_feedstock/geob25202_clean_proxies.tsv")
 geob_value_cols <- setdiff(names(geob), c("core", "depth_in_core_cm", "y_bp"))
 geob_meas <- nearest_sample_match(
   geob,
   "y_bp",
   "geob25202_proxies",
-  "Source/ROCS/data/geob25202_clean_proxies.tsv",
+  "data/kg_feedstock/geob25202_clean_proxies.tsv",
   geob_value_cols
 )
 geob_meas[, measurement_group := "geob25202"]
 long_measurements[[length(long_measurements) + 1]] <- geob_meas
 
-xrf <- read_src("Source/ROCS/data/combined_xrf_geochemistry_not_normalized.csv")
-xrf[, `:=`(
-  ratio_ca_ti = ca / ti,
-  ratio_ba_ti = ba / ti,
-  ratio_rb_sr = rb / sr,
-  ratio_k_ti = k / ti,
-  ratio_mn_fe = mn / fe,
-  ratio_ti_al = ti / al,
-  ratio_zr_rb = zr / rb,
-  ratio_ti_ca = ti / ca,
-  ratio_fe_al = fe / al,
-  ratio_fe_ca = fe / ca,
-  ratio_zr_al = sqrt(zr / al),
-  ratio_mn_ti = mn / ti,
-  ratio_mo_ti = sqrt(mo) / ti,
-  ratio_si_ti = si / ti,
-  ratio_br_ti = br / ti,
-  ratio_p_ti = p / ti
-)]
-xrf_value_cols <- c(
-  "ag", "al", "ar", "as", "at", "ba", "bi", "br", "ca", "cd", "ce", "cl", "cr", "cu", "er", "eu",
-  "fe", "ga", "ge", "hf", "hg", "k", "la", "mg", "mn", "mo", "nb", "nd", "ni", "p", "pb", "rb",
-  "rb_sr", "rh", "ru", "s", "sb", "se", "si", "sm", "sn", "sr", "te", "th", "ti", "tm", "u", "v",
-  "y", "yb", "zn", "zr",
-  "ratio_ca_ti", "ratio_ba_ti", "ratio_rb_sr", "ratio_k_ti", "ratio_mn_fe", "ratio_ti_al",
-  "ratio_zr_rb", "ratio_ti_ca", "ratio_fe_al", "ratio_fe_ca", "ratio_zr_al", "ratio_mn_ti",
-  "ratio_mo_ti", "ratio_si_ti", "ratio_br_ti", "ratio_p_ti"
-)
+xrf <- read_src("data/kg_feedstock/combined_xrf_geochemistry_curated.csv")
+# Preserve curated native measurements and ratios; do not regenerate uncurated ratios.
+xrf_value_cols <- setdiff(names(xrf), c("core", "depth_in_core_cm", "y_bp"))
 xrf_meas <- nearest_sample_match(
   xrf,
   "y_bp",
   "xrf_geochemistry",
-  "Source/ROCS/data/combined_xrf_geochemistry_not_normalized.csv",
+  "data/kg_feedstock/combined_xrf_geochemistry_curated.csv",
   intersect(xrf_value_cols, names(xrf))
 )
 xrf_meas[, measurement_group := "xrf_geochemistry"]
 long_measurements[[length(long_measurements) + 1]] <- xrf_meas
 
-dmg <- read_src("Source/ROCS/results/microbial/damage/damage-classification-depositional/sample-baselines.tsv")
+dmg <- read_src("data/kg_feedstock/sample-baselines.tsv")
 dmg_meas <- direct_measurements(
   dmg,
   "label",
   c("sample_A_b_median", "sample_A_b_iqr", "sample_Zfit_median", "sample_Zfit_iqr", "sample_rho_median", "sample_rho_iqr", "sample_local_fixed_rate", "low_damage_index"),
   "damage_baselines",
-  "Source/ROCS/results/microbial/damage/damage-classification-depositional/sample-baselines.tsv"
+  "data/kg_feedstock/sample-baselines.tsv"
 )
 dmg_meas[, measurement_group := "damage_baseline"]
 long_measurements[[length(long_measurements) + 1]] <- dmg_meas
@@ -338,7 +270,32 @@ measurement_dt <- rbindlist(long_measurements, fill = TRUE, use.names = TRUE)
 measurement_dt <- measurement_dt[!is.na(value) & is.finite(as.numeric(value))]
 measurement_dt[, value := as.numeric(value)]
 
+measurement_dt[, observation_id := paste0("observation:", NG$branch, ":", seq_len(.N))]
+unit_registry <- fread("config_kg_units.tsv")
+measurement_dt[, `:=`(unit = "unspecified_native_unit", unit_status = "unresolved", unit_evidence = "No unit declaration in source")]
+measurement_dt[unit_registry, on = "variable", `:=`(unit = i.unit, unit_status = i.unit_status, unit_evidence = i.unit_evidence)]
+measurement_dt[, matching_policy_status := fifelse(match_method == "direct_sample", "direct_sample", "user_confirmed_depth_policy")]
+coverage <- rbindlist(lapply(proxy_matching_results, function(x) x$coverage), fill = TRUE)
+raw_proxy <- rbindlist(lapply(proxy_matching_results, function(x) x$source_observations), fill = TRUE)
+raw_proxy[, `:=`(unit = "unspecified_native_unit", unit_status = "unresolved")]
+raw_proxy[unit_registry, on = "variable", `:=`(unit = i.unit, unit_status = i.unit_status)]
+fwrite(raw_proxy, file.path(kg_dirs$tables, "kg_proxy_source_observations.tsv"), sep = "\t")
+fwrite(coverage, file.path(kg_dirs$tables, "kg_proxy_matching_coverage.tsv"), sep = "\t")
+fwrite(coverage[matched == FALSE], file.path(kg_dirs$tables, "kg_unmatched_proxy_observations.tsv"), sep = "\t")
+fwrite(unit_registry, file.path(kg_dirs$tables, "kg_variable_units.tsv"), sep = "\t")
+coverage_summary <- coverage[, .(requested = .N, matched = sum(matched), unmatched = sum(!matched)), by = .(source_table, physical_core, variable)]
+fwrite(coverage_summary, file.path(kg_dirs$tables, "kg_import_coverage.tsv"), sep = "\t")
+fwrite(measurement_dt, file.path(kg_dirs$tables, "kg_observations.tsv"), sep = "\t")
+
+for (col in c("bracket_width_cm", "large_gap", "source_observation_ids_left", "source_observation_ids_right")) {
+  if (!col %in% names(measurement_dt)) measurement_dt[, (col) := NA]
+}
 measurement_summary <- measurement_dt[, .(
+  observation_ids = paste(observation_id, collapse = ","),
+  unit = unit[1], unit_status = unit_status[1], unit_evidence = unit_evidence[1],
+  bracket_width_cm = if (all(is.na(bracket_width_cm))) NA_real_ else max(bracket_width_cm, na.rm = TRUE),
+  large_gap = any(large_gap %in% TRUE),
+  source_observation_ids = paste(unique(unlist(strsplit(paste(na.omit(c(source_observation_ids_left, source_observation_ids_right)), collapse = ","), ","))), collapse = ","),
   value = mean(value, na.rm = TRUE),
   value_sd = sd(value, na.rm = TRUE),
   value_min = min(value, na.rm = TRUE),
@@ -368,6 +325,7 @@ variable_nodes <- unique(measurement_summary[, .(
   node_type = "ProxyVariable",
   label = variable,
   variable = variable,
+  unit, unit_status, unit_evidence,
   branch = NG$branch
 )], by = "node_id")
 
@@ -483,6 +441,14 @@ if (!file.exists(taxon_modules_path) || !file.exists(diffpool_modules_path) || !
 vgae_modules <- fread(taxon_modules_path)
 diffpool_modules <- fread(diffpool_modules_path)
 taxon_meta <- fread(taxon_nodes_path)
+full_taxa_path <- file.path(ng_threshold_dirs(as.integer(sub("prev_", "", kg_threshold_label)))$tables, "ngraph_taxa_metadata.tsv")
+retention_path <- file.path(dirname(full_taxa_path), "ngraph_taxon_retention.tsv")
+if (file.exists(full_taxa_path)) taxon_meta <- unique(rbindlist(list(taxon_meta, fread(full_taxa_path)), fill = TRUE), by = "taxon")
+taxon_meta[, evidence_status := "tad_supported"]
+if (file.exists(retention_path)) {
+  retention <- fread(retention_path)
+  taxon_meta[retention, on = c(taxon = "subspecies"), evidence_status := i.evidence_status]
+}
 
 if (!"taxon" %in% names(taxon_meta)) {
   stop("Taxon metadata table lacks expected taxon column.")
@@ -492,6 +458,7 @@ taxon_nodes <- unique(taxon_meta[, .(
   node_id = paste0("taxon:", taxon),
   node_type = "Taxon",
   label = taxon,
+  evidence_status,
   taxon = taxon,
   domain,
   phylum,
@@ -504,7 +471,7 @@ taxon_nodes <- unique(taxon_meta[, .(
 )], by = "node_id")
 
 vgae_nodes <- unique(vgae_modules[, .(
-  node_id = paste0("module:vgae:", module_kmeans),
+  node_id = paste("module", NG$branch, kg_threshold_label, kg_method_label, "vgae", module_kmeans, sep = ":"),
   node_type = "Module",
   label = paste("VGAE", module_kmeans),
   module_id = module_kmeans,
@@ -513,7 +480,7 @@ vgae_nodes <- unique(vgae_modules[, .(
 )], by = "node_id")
 
 diffpool_nodes <- unique(diffpool_modules[, .(
-  node_id = paste0("module:diffpool:", consensus_module),
+  node_id = paste("module", NG$branch, kg_threshold_label, kg_method_label, "diffpool", consensus_module, sep = ":"),
   node_type = "Module",
   label = paste("DiffPool", consensus_module),
   module_id = consensus_module,
@@ -528,10 +495,10 @@ taxon_module_edges_vgae <- merge(
   all.x = TRUE
 )
 taxon_module_edges_vgae <- taxon_module_edges_vgae[, .(
-  edge_id = paste("edge", "taxon_member_of_module", taxon, module_kmeans, sep = ":"),
+  edge_id = paste("edge", "taxon_member_of_module", NG$branch, "vgae", taxon, module_kmeans, sep = ":"),
   edge_type = "taxon_member_of_module",
   source_id = paste0("taxon:", taxon),
-  target_id = paste0("module:vgae:", module_kmeans),
+  target_id = paste("module", NG$branch, kg_threshold_label, kg_method_label, "vgae", module_kmeans, sep = ":"),
   source_node_type = "Taxon",
   target_node_type = "Module",
   weight = 1,
@@ -546,10 +513,10 @@ taxon_module_edges_vgae <- taxon_module_edges_vgae[, .(
 )]
 
 taxon_module_edges_diffpool <- diffpool_modules[, .(
-  edge_id = paste("edge", "taxon_member_of_module", taxon, consensus_module, sep = ":"),
+  edge_id = paste("edge", "taxon_member_of_module", NG$branch, "diffpool", taxon, consensus_module, sep = ":"),
   edge_type = "taxon_member_of_module",
   source_id = paste0("taxon:", taxon),
-  target_id = paste0("module:diffpool:", consensus_module),
+  target_id = paste("module", NG$branch, kg_threshold_label, kg_method_label, "diffpool", consensus_module, sep = ":"),
   source_node_type = "Taxon",
   target_node_type = "Module",
   weight = 1,
@@ -578,6 +545,14 @@ sample_taxon[, `:=`(
   abundance = as.numeric(abundance),
   clr = as.numeric(clr)
 )]
+support_file <- file.path(dirname(retention_path), "ngraph_taxon_read_support.tsv")
+sample_taxon[, `:=`(abundance_tad = NA_real_, abundance_read = NA_real_)]
+if (file.exists(support_file)) {
+  support <- fread(support_file)
+  sample_taxon[support, on = c("sample", "taxon"), `:=`(abundance_tad = i.abundance_tad, abundance_read = i.abundance_read)]
+}
+if (!"abundance_mode" %in% names(sample_taxon)) sample_taxon[, abundance_mode := "historical_unspecified"]
+sample_taxon[, abundance_basis := fifelse(is.na(abundance_tad), "unspecified", fifelse(abundance_tad > 0, "TAD", "read_fallback"))]
 sample_taxon <- sample_taxon[abundance > 0]
 sample_taxon_edges <- sample_taxon[, .(
   edge_id = paste("edge", "sample_observed_taxon", sample_id, taxon, sep = ":"),
@@ -595,19 +570,24 @@ sample_taxon_edges <- sample_taxon[, .(
   value = abundance,
   abundance = abundance,
   clr = clr,
+  sample_id = sample_id,
+  taxon = taxon,
+  abundance_mode, abundance_basis, abundance_tad, abundance_read,
   analysis = "sample_taxon_abundance"
-), by = .(sample_id, taxon, core, site_id, abundance, clr)]
+)]
 
+control_contexts <- unique(sample_nodes[!site_id %in% site_lookup$site_id, .(site_id)])
+control_nodes <- control_contexts[, .(node_id = paste0("control:", site_id), node_type = "ControlContext", label = site_id, branch = NG$branch)]
 sample_site_edges <- sample_nodes[, .(
   edge_id = paste("edge", "site_has_sample", site_id, node_id, sep = ":"),
-  edge_type = "site_has_sample",
-  source_id = paste0("site:", site_id),
+  edge_type = fifelse(site_id %in% site_lookup$site_id, "site_has_sample", "control_has_sample"),
+  source_id = paste0(fifelse(site_id %in% site_lookup$site_id, "site:", "control:"), site_id),
   target_id = node_id,
-  source_node_type = "Site",
+  source_node_type = fifelse(site_id %in% site_lookup$site_id, "Site", "ControlContext"),
   target_node_type = "Sample",
   weight = 1,
   source_table = "metadata_v5.tsv",
-  source_file = "Source/ROCS/data/metadata_v5.tsv",
+  source_file = "data/metadata/metadata_v5.tsv",
   branch = NG$branch,
   core = core,
   sample_id = node_id,
@@ -627,6 +607,14 @@ measurement_nodes <- measurement_summary[, .(
   variable,
   measurement_group,
   value,
+  observation_ids,
+  unit,
+  unit_status,
+  unit_evidence,
+  bracket_width_cm,
+  large_gap,
+  source_observation_ids,
+  match_method,
   value_sd,
   value_min,
   value_max,
@@ -769,6 +757,7 @@ ontology_edges <- rbindlist(list(
 ), fill = TRUE)
 
 kg_nodes <- rbindlist(list(
+  control_nodes,
   site_nodes,
   sample_nodes,
   taxon_nodes,
@@ -782,7 +771,18 @@ kg_nodes <- rbindlist(list(
 ), fill = TRUE, use.names = TRUE)
 kg_nodes <- unique(kg_nodes, by = "node_id")
 
+read_support_path <- file.path(dirname(retention_path), "ngraph_taxon_read_support.tsv")
+read_support_edges <- data.table()
+if (file.exists(read_support_path)) {
+  rs <- fread(read_support_path)[abundance_read > 0 & sample %in% sample_nodes$node_id & taxon %in% taxon_nodes$taxon]
+  read_support_edges <- rs[, .(edge_id = paste("edge", "sample_read_supported_taxon", sample, taxon, sep = ":"),
+    edge_type = "sample_read_supported_taxon", source_id = sample, target_id = paste0("taxon:", taxon),
+    source_node_type = "Sample", target_node_type = "Taxon", weight = 1, abundance_read, abundance_tad, n_reads,
+    source_table = "ngraph_taxon_read_support.tsv", source_file = read_support_path, branch = NG$branch,
+    evidence = "Damaged classification; >=100 reads per source row; read support distinct from TAD abundance")]
+}
 kg_edges <- rbindlist(list(
+  read_support_edges,
   sample_site_edges,
   sample_taxon_edges,
   taxon_module_edges_vgae,
@@ -792,6 +792,22 @@ kg_edges <- rbindlist(list(
   ontology_edges
 ), fill = TRUE, use.names = TRUE)
 kg_edges <- unique(kg_edges, by = "edge_id")
+dangling <- kg_edges[!source_id %in% kg_nodes$node_id | !target_id %in% kg_nodes$node_id]
+if (nrow(dangling)) stop("KG contains ", nrow(dangling), " dangling references")
+if (anyDuplicated(names(kg_edges))) {
+  for (col in unique(names(kg_edges)[duplicated(names(kg_edges))])) {
+    idx <- which(names(kg_edges) == col)
+    for (j in idx[-1]) if (!identical(kg_edges[[idx[1]]], kg_edges[[j]])) stop("Conflicting duplicate KG column: ", col)
+  }
+  kg_edges <- kg_edges[, !duplicated(names(kg_edges)), with = FALSE]
+}
+write_json(list(status = "structural_validation_passed", dangling_references = nrow(dangling),
+  duplicate_node_ids = anyDuplicated(kg_nodes$node_id), duplicate_edge_ids = anyDuplicated(kg_edges$edge_id),
+  units = "explicit_registry_with_unresolved_native_units", proxy_alias_policy = "GeoB25202_R1_and_R2_share_physical_core_by_depth",
+  matching_policy = list(primary_key = "physical_core_and_depth_cm", within_level_tolerance_cm = 0.5,
+    interpolation = "linear_between_bracketing_finite_continuous_values", extrapolation = FALSE,
+    age_matching = "disabled_no_universal_age_tolerance", large_gap_factor = as.numeric(Sys.getenv("NG_KG_LARGE_GAP_FACTOR", "3")))),
+  file.path(kg_dirs$tables, "kg_validation.json"), auto_unbox = TRUE, pretty = TRUE)
 
 kg_measurements <- copy(measurement_summary)
 kg_measurements[, measurement_id := node_id]
@@ -828,7 +844,7 @@ kg_manifest <- list(
   edge_types = sort(unique(as.character(kg_edges$edge_type))),
   site_ids = site_lookup$site_id,
   import_strategy = list(
-    sample_matching = "nearest label/depth/age within core",
+    sample_matching = "physical core and depth; within 0.5 cm or bracketed interpolation; no extrapolation",
     taxon_modules = "current NGraph deep module artifacts",
     ontology = "namespace-level mapping inventory"
   ),
@@ -868,7 +884,7 @@ report_text <- c(
   "## Notes",
   "",
   "- Site coordinates are encoded directly from the trial metadata supplied in the conversation.",
-  "- Proxy measurements are linked to the nearest sample within the same core using age or depth, depending on the source table.",
+  "- Proxy measurements use physical core/depth matching within 0.5 cm or bracketed interpolation without extrapolation; R1/R2 share a GeoB physical core. Large gaps and unresolved units are explicit.",
   "- Current NGraph module assignments are imported as `Taxon -> Module` edges.",
   "- Ontology linking is currently namespace-level and remains a planning inventory rather than a full reasoning layer.",
   "- The importer writes branch-scoped TSV/JSON artifacts only; no external database is required for v0."

@@ -1,5 +1,7 @@
 # NGraph Workflow Summary
 
+> **Current-state audit (2026-10-05):** The latest code/artifact review is in [REPOSITORY_REVIEW_2026-10-05.md](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md). The active checkout is `/maps/projects/caeg/people/gfx654/Projects/NGraph`; `/src` is absent here. The permissive `prev_10` Pearson histories are 120 VGAE and 160 DiffPool epochs, but the DiffPool consensus assigns all 1,797 taxa to M18; the July file-backed KG needs integrity/schema work, and the dashboard has endpoint probes but no completed browser UI validation. Read the review before treating older “current” labels, module calls, scores, or KG paths as validated.
+
 - Generated: 2026-06-24 16:02:46 CEST
 - Seed: `42`
 - Branch: `permissive_hybrid_prev10`
@@ -110,3 +112,7 @@ Mean graph-of-graphs similarity by threshold and method:
 |results/ngraph/permissive_hybrid_prev10/prev_10/graphs/ngraph_edges_GeoB25202_R1_bicor.tsv|1126000|
 |results/ngraph/permissive_hybrid_prev10/prev_10/graphs/ngraph_edges_ST8_bicor.tsv|1113000|
 |results/ngraph/permissive_hybrid_prev10/prev_10/graphs/ngraph_ST8_mi_aracne.graphml|1107000|
+
+## Audited branch note (2026-10-05)
+
+This is a permissive exploratory output workstream, not a Git branch. Its KG has 34,689 nodes and 243,387 edges, with 1,797 taxa; these counts match its manifest/tables and the latest `logs/15_kg_import_site_sample_proxies.log`. VGAE and DiffPool histories for the Pearson example run 120 and 160 epochs respectively. The DiffPool consensus puts all 1,797 taxa into M18, which is not evidence of useful biological module resolution. This longer run does not repair checkpoint, split, scale or stability concerns described in the [full review](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md).

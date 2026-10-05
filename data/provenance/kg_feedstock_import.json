@@ -1,0 +1,32 @@
+[
+  {
+    "source": "Source/ROCS/data/combined_sst_proxies_separate_columns.csv",
+    "canonical": "data/kg_feedstock/combined_sst_proxies_separate_columns.csv",
+    "sha256": "ee3305f19920443d79d6b7ef3a50396c86daed7002bf12b6c1d45029c5ac54f8"
+  },
+  {
+    "source": "Source/ROCS/data/combined_foraminifera_geochem.tsv",
+    "canonical": "data/kg_feedstock/combined_foraminifera_geochem.tsv",
+    "sha256": "c3907a353ed200779366966997cfc5486447dc13067ac836146ab07545152a68"
+  },
+  {
+    "source": "Source/ROCS/data/geob25202_clean_proxies.tsv",
+    "canonical": "data/kg_feedstock/geob25202_clean_proxies.tsv",
+    "sha256": "02758a43a0f3e3cb316e7391d300833f427b74ec1c0255dd958b9c76e0c67ed6"
+  },
+  {
+    "source": "Source/ROCS/data/combined_xrf_geochemistry_not_normalized.csv",
+    "canonical": "data/kg_feedstock/combined_xrf_geochemistry_not_normalized.csv",
+    "sha256": "4f2ae6aa681efbe35987af9ac48f1b2a225cbdd84682e2f7cf57e3ad51e80a58"
+  },
+  {
+    "source": "Source/ROCS/data/combined_xrf_geochemistry_curated.csv",
+    "canonical": "data/kg_feedstock/combined_xrf_geochemistry_curated.csv",
+    "sha256": "efffc2c1ffe0f7052098a89e31fb9bbd8866df7a2052477d9656fe9a60c42514"
+  },
+  {
+    "source": "Source/ROCS/results/microbial/damage/damage-classification-depositional/sample-baselines.tsv",
+    "canonical": "data/kg_feedstock/sample-baselines.tsv",
+    "sha256": "8845b8cc9785e9b04b129e24ac737a76cd70cea269f9005cc02de79387bb4e82"
+  }
+]

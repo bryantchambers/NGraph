@@ -11,6 +11,7 @@ set.seed(NG_PARAMS$seed)
 LOG <- ng_log_path("01_ngraph_clr_matrices")
 ng_start_log(LOG)
 ng_log(LOG, "Starting NGraph abundance-threshold CLR matrix isolation")
+ng_log(LOG, "Package versions: data.table ", as.character(packageVersion("data.table")))
 
 for (path in c(NG_DATA$tax_damage, NG_DATA$metadata_file, NG_DATA$prokaryote_function)) {
   if (!file.exists(path)) stop("Missing imported feedstock: ", path, ". Run step 00 first.")
@@ -60,12 +61,21 @@ agg <- prok[, .(
   reference_length = mean(reference_length, na.rm = TRUE)
 ), by = .(subspecies, label)]
 
+# Aggregate before fallback. The TAD-only branch uses fallback for prevalence;
+# the explicitly permissive mixed sensitivity uses fallback in its matrix too.
+if (NG_PARAMS$abundance_mode %in% c("hybrid_prevalence_tad_matrix", "hybrid_aggregated_tad_then_read")) {
+  agg[, prevalence_abundance := fifelse(abundance_tad > 0, abundance_tad, abundance_read)]
+  agg[, abundance := if (NG_PARAMS$abundance_mode == "hybrid_aggregated_tad_then_read") prevalence_abundance else abundance_tad]
+} else {
+  agg[, prevalence_abundance := abundance]
+}
+
 ng_log(LOG, "Stage-1 aggregate: ", uniqueN(agg$subspecies), " taxa x ", uniqueN(agg$label), " samples")
 
 threshold_summaries <- list()
 for (thr in NG_PARAMS$prevalence_thresholds) {
   dirs <- ng_threshold_dirs(thr)
-  keep_taxa <- agg[abundance > 0, .N, by = subspecies][N >= thr, subspecies]
+  keep_taxa <- agg[prevalence_abundance > 0, .N, by = subspecies][N >= thr, subspecies]
   dt <- agg[subspecies %in% keep_taxa]
 
   wide_abund <- dcast(dt, subspecies ~ label, value.var = "abundance", fill = 0)
@@ -75,6 +85,22 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
   storage.mode(abund_mat) <- "double"
 
   abund_mat <- abund_mat[, meta$label, drop = FALSE]
+  sample_meta <- copy(meta)
+  if (NG_PARAMS$abundance_mode %in% c("hybrid_prevalence_tad_matrix", "hybrid_aggregated_tad_then_read")) {
+    nonempty <- colSums(abund_mat) > 0
+    abund_mat <- abund_mat[, nonempty, drop = FALSE]
+    sample_meta <- sample_meta[label %in% colnames(abund_mat)]
+  }
+  if (ncol(abund_mat) < 2 || nrow(abund_mat) < 2) stop("Too few nonempty samples/taxa for CLR")
+  retention <- dt[, .(
+    prevalence_samples = sum(prevalence_abundance > 0),
+    tad_positive_samples = sum(abundance_tad > 0),
+    tad_total = sum(abundance_tad),
+    read_total = sum(abundance_read)
+  ), by = subspecies]
+  retention[, evidence_status := fifelse(tad_positive_samples > 0, "tad_supported", "read_prevalence_only")]
+  fwrite(retention, file.path(dirs$tables, "ngraph_taxon_retention.tsv"), sep = "\t")
+  fwrite(dt[label %in% colnames(abund_mat), .(taxon = subspecies, sample = label, abundance_tad, abundance_read, n_reads, prevalence_abundance)], file.path(dirs$tables, "ngraph_taxon_read_support.tsv"), sep = "\t")
 
   log_abund <- log(t(abund_mat) + NG_PARAMS$clr_pseudocount)
   clr <- sweep(log_abund, 1, rowMeans(log_abund), FUN = "-")
@@ -99,7 +125,7 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     total_n_reads_tad = sum(n_reads_tad, na.rm = TRUE),
     total_tax_abund_aln = sum(tax_abund_aln, na.rm = TRUE)
   ), by = label]
-  sample_qc <- merge(meta, sample_totals, by = "label", all.x = TRUE, sort = FALSE)
+  sample_qc <- merge(sample_meta, sample_totals, by = "label", all.x = TRUE, sort = FALSE)
   for (col in c("total_tax_abund_mode", "detected_taxa_mode", "total_tax_abund_tad", "detected_taxa_tad",
                 "total_tax_abund_read", "detected_taxa_read", "total_n_reads",
                 "total_n_reads_tad", "total_tax_abund_aln")) {
@@ -115,11 +141,14 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     log_total_n_reads_tad = log10(total_n_reads_tad + 1)
   )]
 
-  taxa_meta_ng <- taxa_meta[taxon %in% colnames(clr)]
-  if (nrow(taxa_meta_ng) == 0) taxa_meta_ng <- data.table(taxon = colnames(clr))
+  taxa_meta_ng <- merge(data.table(taxon = colnames(clr)), unique(taxa_meta, by = "taxon"), by = "taxon", all.x = TRUE, sort = FALSE)
 
   saveRDS(clr, file.path(dirs$matrices, "ngraph_clr_global.rds"))
-  saveRDS(abund_mat, file.path(dirs$matrices, "ngraph_tax_abund_tad_taxa_by_sample.rds"))
+  saveRDS(abund_mat, file.path(dirs$matrices, "ngraph_tax_abundance_taxa_by_sample.rds"))
+  tad_wide <- dcast(dt, subspecies ~ label, value.var = "abundance_tad", fill = 0)
+  tad_only <- as.matrix(tad_wide[, -1, with = FALSE]); rownames(tad_only) <- tad_wide$subspecies
+  tad_only <- tad_only[rownames(abund_mat), colnames(abund_mat), drop = FALSE]
+  saveRDS(tad_only, file.path(dirs$matrices, "ngraph_tax_abund_tad_taxa_by_sample.rds"))
   fwrite(sample_qc, file.path(dirs$tables, "ngraph_sample_qc.tsv"), sep = "\t")
   fwrite(taxa_meta_ng, file.path(dirs$tables, "ngraph_taxa_metadata.tsv"), sep = "\t")
 
@@ -127,13 +156,15 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     branch = NG$branch,
     threshold = thr,
     matrix = "ngraph_clr_global",
-    abundance_column = NG_PARAMS$abundance_column,
+    abundance_column = if (NG_PARAMS$abundance_mode == "hybrid_aggregated_tad_then_read") "aggregated_tad_then_read" else NG_PARAMS$abundance_column,
     abundance_mode = NG_PARAMS$abundance_mode,
     min_reads_gate = NG_PARAMS$min_reads_gate,
     samples = nrow(clr),
     taxa = ncol(clr),
     pseudocount = NG_PARAMS$clr_pseudocount,
     prevalence_min_samples = thr,
+    taxa_read_prevalence_only = sum(retention$tad_positive_samples == 0),
+    samples_dropped_empty = nrow(meta) - nrow(sample_meta),
     max_abs_sample_clr_mean = row_mean_abs_max
   )
   fwrite(matrix_summary, file.path(dirs$tables, "ngraph_matrix_summary.tsv"), sep = "\t")

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -123,6 +124,9 @@ def numeric_feature_frame(df: pd.DataFrame, exclude: List[str]) -> Tuple[pd.Data
     if not cols:
         raise SystemExit("No numeric feature columns available after excluding: " + ", ".join(exclude))
     features = df[cols].replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(np.float32)
+    # Transductive feature scaling: all exported nodes are visible; this is not an unseen-site evaluation.
+    scale = features.std(ddof=0).replace(0.0, 1.0)
+    features = ((features - features.mean()) / scale).clip(-8.0, 8.0).astype(np.float32)
     return features, cols
 
 
@@ -285,10 +289,24 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
     edge_frame["src_global"] = edge_frame["src_global"].astype(int)
     edge_frame["dst_global"] = edge_frame["dst_global"].astype(int)
 
-    # Split on the edge type naming convention from the exporter.
-    is_validation = edge_frame["edge_type_name"].str.contains(f"taxon_taxon__{validation_core}__")
-    train_frame = edge_frame[~is_validation].copy()
-    test_frame = edge_frame[is_validation & (edge_frame["src"] < edge_frame["dst"])].copy()
+    from ngraph_training_validation import split_pairs
+    taxon_edge_mask = (edge_frame["src_type"] == "taxon") & (edge_frame["dst_type"] == "taxon")
+    splits = split_pairs(edge_frame.loc[taxon_edge_mask, ["src", "dst"]].to_numpy(), taxon_count, SEED)
+    heldout = {tuple(pair) for label in ("validation", "test") for pair in splits[label]}
+    # Remove held-out pairs from every core/sign relation, including reverse edges.
+    leak_mask = edge_frame.apply(lambda r: bool(r["src_type"] == "taxon" and r["dst_type"] == "taxon" and tuple(sorted((r["src"], r["dst"]))) in heldout), axis=1)
+    train_frame = edge_frame[~leak_mask].copy()
+    def pair_tensor(label):
+        return torch.tensor(splits[label].T, dtype=torch.long)
+    test_frame = pd.DataFrame(splits["test"], columns=["src", "dst"])
+    np.savez(combo_dir / "models" / "vgae_pair_splits.npz", **splits)
+    (combo_dir / "tables" / "vgae_evaluation_policy.json").write_text(json.dumps({
+        "evaluation": "transductive_unique_taxon_pair_reconstruction",
+        "seed": SEED, "split": "80/10/10", "checkpoint_selection": "validation_only",
+        "negative_policy": "fixed_disjoint_non_edges_excluding_all_known_positive_pairs",
+        "feature_fit": "all_exported_nodes_zscore_clipped_8",
+        "limitations": "Node/context features remain visible; not independent site generalization",
+        "counts": {k: len(v) for k,v in splits.items()}}, indent=2))
 
     train_x = x
     train_edge_index = torch.tensor(train_frame[["src_global", "dst_global"]].astype(int).to_numpy().T, dtype=torch.long)
@@ -312,7 +330,7 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
         model.train()
         optimizer.zero_grad()
         z = model.encode(train_x, train_edge_index, train_edge_type)
-        loss = model.recon_loss(z, train_edge_index) + 0.001 * model.kl_loss()
+        loss = model.recon_loss(z[:taxon_count], pair_tensor("train"), pair_tensor("train_negative")) + 0.001 * model.kl_loss()
         loss.backward()
         optimizer.step()
 
@@ -320,31 +338,21 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
         with torch.no_grad():
             z_eval = model.encode(train_x, train_edge_index, train_edge_type)
             taxon_z = z_eval[:taxon_count]
-            test_pos = torch.tensor(test_frame[["src", "dst"]].to_numpy().T, dtype=torch.long)
-            if len(test_frame) > 0:
-                neg = negative_sampling(
-                    test_pos,
-                    num_nodes=taxon_count,
-                    num_neg_samples=test_pos.size(1),
-                    method="sparse",
-                )
-                auc, ap = model.test(taxon_z, test_pos, neg)
-            else:
-                auc, ap = float("nan"), float("nan")
+            auc, ap = model.test(taxon_z, pair_tensor("validation"), pair_tensor("validation_negative"))
 
         history.append(
             {
                 "epoch": epoch,
                 "train_loss": float(loss.item()),
-                "heldout_auc": float(auc),
-                "heldout_ap": float(ap),
+                "validation_auc": float(auc),
+                "validation_ap": float(ap),
             }
         )
         if np.isfinite(auc) and auc > best_auc:
             best_auc = auc
             best_state = {
                 "epoch": epoch,
-                "state_dict": model.state_dict(),
+                "state_dict": copy.deepcopy(model.state_dict()),
             }
 
     if best_state is not None:
@@ -353,6 +361,8 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
     model.eval()
     with torch.no_grad():
         z = model.encode(train_x, train_edge_index, train_edge_type)
+    with torch.no_grad():
+        final_test_auc, final_test_ap = model.test(z[:taxon_count], pair_tensor("test"), pair_tensor("test_negative"))
     taxon_z = z[:taxon_count].cpu().numpy()
     site_z = z[taxon_count:].cpu().numpy()
 
@@ -365,7 +375,7 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
     else:
         best_k = 2
         best_sil = -math.inf
-        for k in range(2, k_max + 1):
+        for k in range(min(int(os.environ.get("NG_MODULE_K_MIN", "2")), k_max), k_max + 1):
             labels = KMeans(n_clusters=k, random_state=SEED, n_init="auto").fit_predict(taxon_z)
             if len(set(labels)) < 2:
                 continue
@@ -391,7 +401,8 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
             "pca_2": coords[:, 1],
         }
     )
-    module_df["module_entropy_proxy"] = 0.0
+    module_df["module_entropy_proxy"] = np.nan
+    module_df["assignment_status"] = "exploratory_embedding_kmeans"
     module_df["module_count"] = chosen_k
     module_df["silhouette"] = sil
 
@@ -414,9 +425,13 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
         {
             "threshold": threshold,
             "method": method,
-            "validation_core": validation_core,
+            "validation_core": "not_applicable_pair_holdout",
             "best_epoch": best_state["epoch"] if best_state is not None else np.nan,
-            "best_heldout_auc": best_auc if np.isfinite(best_auc) else np.nan,
+            "best_heldout_auc": best_auc if np.isfinite(best_auc) else np.nan,  # compatibility: validation score, not test
+            "best_validation_auc": best_auc,
+            "final_test_auc": float(final_test_auc),
+            "final_test_ap": float(final_test_ap),
+            "evaluation_scope": "transductive_unique_taxon_pairs",
             "module_k": chosen_k,
             "module_silhouette": sil,
         },
@@ -426,10 +441,10 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
 
     torch.save(
         {
-            "state_dict": model.state_dict(),
+            "state_dict": copy.deepcopy(model.state_dict()),
             "threshold": threshold,
             "method": method,
-            "validation_core": validation_core,
+            "validation_core": "not_applicable_pair_holdout",
             "taxon_feature_columns": taxon_cols,
             "site_feature_columns": site_cols,
             "edge_type_map": train_edge_type_map,
@@ -479,7 +494,7 @@ def main() -> int:
     parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "abundance_thresholding"))
     parser.add_argument("--threshold", default=None, help="Limit to one prevalence directory, e.g. prev_5")
     parser.add_argument("--method", default=None, help="Limit to one graph method")
-    parser.add_argument("--epochs", type=int, default=120)
+    parser.add_argument("--epochs", type=int, default=int(os.environ.get("NG_TRAIN_EPOCHS", "120")))
     args = parser.parse_args()
 
     root = deep_root(args.branch)

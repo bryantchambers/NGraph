@@ -1,5 +1,7 @@
 # NGraph Workflow Summary
 
+> **Current-state audit (2026-10-05):** The latest code/artifact review is in [REPOSITORY_REVIEW_2026-10-05.md](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md). The active checkout is `/maps/projects/caeg/people/gfx654/Projects/NGraph`; `/src` is absent here. The graph-learning histories in the threshold benchmark are five-epoch smoke runs, the July file-backed KG needs integrity/schema work, and the dashboard has endpoint probes but no completed browser UI validation. Read the review before treating older “current” labels, module calls, scores, or KG paths as validated.
+
 - Generated: 2026-06-19 07:36:54 UTC
 - Seed: `42`
 - Branch: `abundance_thresholding`
@@ -190,3 +192,7 @@ The discovery artifacts live under `results/ngraph/abundance_thresholding/deep_k
 |results/ngraph/abundance_thresholding/prev_5/graphs/ngraph_ST13_bicor.graphml|9807000|
 |results/ngraph/abundance_thresholding/prev_5/graphs/ngraph_ST8_spearman.graphml|9333000|
 |results/ngraph/abundance_thresholding/prev_3/graphs/ngraph_edges_ST8_bicor.tsv|8854000|
+
+## Audited branch note (2026-10-05)
+
+This directory remains the conservative `tax_abund_tad` benchmark output. Its file-backed KG artifacts contain 33,164 nodes and 137,013 edges (the July manifest and tables agree), with 274 taxa. The audited `prev_3`/`prev_5`/`prev_10` × four-method VGAE and DiffPool histories are five epochs each; treat them as smoke runs, not validated module discovery. The `prev_5`/Pearson example has VGAE AUC 0.6719 (best epoch 1), KMeans silhouette 0.6195 with 141/133 taxa in its two groups, and DiffPool consensus M15 with 273/274 taxa plus one in M7. `prev_5` PC1 remains associated with detected taxa (r = -0.7393), and `prev_5`/bicor density is 0.7786 versus 0.1676 for Pearson. These outputs need corrected checkpoints/splits, module stability and functional/null evidence before biological interpretation. See [the full review](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md).

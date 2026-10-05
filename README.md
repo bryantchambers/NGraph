@@ -1,5 +1,7 @@
 # NGraph
 
+> **Current-state audit (2026-10-05):** The latest code/artifact review is in [REPOSITORY_REVIEW_2026-10-05.md](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md). The active checkout is `/maps/projects/caeg/people/gfx654/Projects/NGraph`; `/src` is absent here. The graph-learning histories in the threshold benchmark are five-epoch smoke runs, the July file-backed KG needs integrity/schema work, and the dashboard has endpoint probes but no completed browser UI validation. Read the review before treating older “current” labels, module calls, scores, or KG paths as validated.
+
 NGraph builds site-specific microbial taxon graphs from ancient marine sedaDNA and links those graphs into a graph-of-graphs. The working goal is to reduce bias from uneven sediment compression, uneven age coverage, and unequal sample counts before downstream module discovery.
 
 ## Resume Snapshot
@@ -195,3 +197,29 @@ Current high-level interpretation:
 3. Check module stability, functional coherence, and held-out reconstruction behavior before biological interpretation.
 4. Validate the deep-knowledge discovery scripts and canonical query report.
 5. Keep the post-deep diagnostics in sync with the summary report and plots.
+
+## Audited current state and next prototype (2026-10-05)
+
+The detailed evidence and acceptance gates are in [LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md). This is an additive update; the dated resume snapshot above records the earlier `/src` setup. The active checkout now runs at `/maps/projects/caeg/people/gfx654/Projects/NGraph`, and `abundance_thresholding` / `permissive_hybrid_prev10` name output workstreams, not Git branches.
+
+- **Graph and modules:** The graph-of-graphs plus heterograph/VGAE and DiffPool artifacts exist. All 12 threshold-benchmark model pairs have five-epoch histories and are smoke runs; the permissive `prev_10` run has 120 VGAE and 160 DiffPool epochs, with all 1,797 taxa assigned to one DiffPool consensus module. No bootstrap stability, functional enrichment, clean held-out-core evaluation or sediment time-warp correction is implemented.
+- **Knowledge graph:** A file-backed importer, manifests and browser APIs exist. Schema enforcement and ontology grounding are absent; artifacts have 58 dangling control-site edges, missing GeoB proxy imports due to core aliases, and gaps in units, matching tolerance and observation provenance.
+- **Dashboard:** Local API/query routes respond, while neighborhood traversal, relation filters and limits have confirmed defects. No full browser UI validation or live Gemini synthesis was completed. The KG is not used by current module learning or query generation.
+
+**Next prototype sequence:** (1) fix reproducibility, checkpoint/split, prevalence and KG importer defects; (2) define and validate a bounded typed KG schema with provenance and units; (3) implement evidence-backed metapath counts/DWPC on `prev_5`/Pearson; (4) assess a separate KG-learning task with clean holdout; (5) repair and validate dashboard workflows. `scripts/15_kg_import_site_sample_proxies.R` is currently invoked under runner stage label 14, while `scripts/14_ngraph_local_browser.py` is the browser; reconcile this numbering before documenting `--start` behavior.
+
+
+## MVP implementation update — 2026-10-05
+
+A bounded KG/module prototype is now implemented. The requested read-assisted prevalence filter retains 1,797 taxa in a TAD-only CLR matrix across 200 samples. Of these, 438 have positive TAD evidence and form seven exploratory VGAE groups; all retained taxa remain represented in the KG with read support distinguished from TAD abundance. The KG validates identifiers and references, preserves observation provenance and unmatched proxies, and exposes typed connectivity searches at `http://localhost:10290/kg/paths` with two preset demonstration questions.
+
+The runnable entry point is `bash run_mvp.sh`; `NG_ENV_PREFIX` selects an existing environment, and `NG_BRANCH` selects a fresh output branch. See [implementation plan](LEARNING_AND_NOTES/MVP_IMPLEMENTATION_PLAN_2026-10-05.md) and [verified results and limitations](LEARNING_AND_NOTES/MVP_IMPLEMENTATION_RESULTS_2026-10-05.md). Earlier review sections describe the state before these fixes. Proxy units, GeoB aliases and matching tolerances still need scientific review; typed search is implemented, while KG machine learning and publication-level module validation remain future work.
+
+
+## Current MVP — permissive mixed sensitivity (2026-10-05)
+
+The current MVP launcher uses `hybrid_aggregated_tad_then_read`: damaged source rows pass the >=100-read gate before aggregation; aggregated TAD values take precedence, with read abundance as fallback for both prevalence (>=10 samples) and the CLR matrix. The mixed run retains 1,797 taxa and 214 samples and learns six exploratory VGAE modules over all retained taxa. The TAD-only run remains a separate comparison. Generic mixed abundance and native TAD-only matrices are saved separately.
+
+The mixed KG now uses curated XRF, user-confirmed GeoB physical-core aliases, depth matches within 0.5 cm and bracketed linear interpolation without extrapolation. Its schema, source-value reconstruction, coverage accounting and GeoB library consistency checks pass. Unknown native units and large interpolation gaps remain explicit. The current browser is `http://localhost:10291/kg/paths`; port 10290 retains the earlier TAD-only prototype. See [current mixed sensitivity and KG report](LEARNING_AND_NOTES/KG_SUBSTRATE_AND_MIXED_SENSITIVITY_2026-10-05.md).
+
+Run a fresh mixed MVP with `bash run_mvp.sh`. To reproduce the TAD-only comparison, use `NG_ABUNDANCE_MODE=hybrid_prevalence_tad_matrix bash run_mvp.sh`. Both commands create a fresh run branch by default.

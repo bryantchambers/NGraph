@@ -144,6 +144,7 @@ def fit_relation_model(features: np.ndarray, labels: np.ndarray, seed: int = SEE
     test_prob = model.predict_proba(test_x)[:, 1]
     metrics = {
         "holdout_auc": float(roc_auc_score(test_y, test_prob)),
+        "evaluation_scope": "calibration_pair_split_on_pretrained_embeddings_not_independent_graph_holdout",
         "holdout_ap": float(average_precision_score(test_y, test_prob)),
     }
     final_model = make_pipeline(
@@ -253,7 +254,7 @@ def build_taxon_taxon_scores(
     out = out.sort_values("latent_score", ascending=False).reset_index(drop=True)
     out["rank"] = np.arange(1, len(out) + 1)
     out.to_csv(combo_dir / "tables" / "ngraph_taxon_taxon_link_predictions.tsv", sep="\t", index=False)
-    logger.info("%s/%s taxon-taxon: %d candidate pairs, holdout AUC %.3f", threshold, method, len(out), metrics["holdout_auc"])
+    logger.info("%s/%s taxon-taxon: %d candidate pairs, calibration pair-split AUC %.3f", threshold, method, len(out), metrics["holdout_auc"])
     return out
 
 
@@ -361,7 +362,7 @@ def build_taxon_site_scores(
     out = out.sort_values("latent_score", ascending=False).reset_index(drop=True)
     out["rank"] = np.arange(1, len(out) + 1)
     out.to_csv(combo_dir / "tables" / "ngraph_taxon_site_link_predictions.tsv", sep="\t", index=False)
-    logger.info("%s/%s taxon-site: %d candidate pairs, holdout AUC %.3f", threshold, method, len(out), metrics["holdout_auc"])
+    logger.info("%s/%s taxon-site: %d candidate pairs, calibration pair-split AUC %.3f", threshold, method, len(out), metrics["holdout_auc"])
     return out
 
 
@@ -400,7 +401,7 @@ def main() -> int:
     parser.add_argument("--top-n", type=int, default=100)
     args = parser.parse_args()
 
-    logger = setup_logger(project_root() / "logs" / "10_ngraph_link_prediction.log")
+    logger = setup_logger(project_root() / "logs" / os.environ.get("NG_LOG_SCOPE", "") / "10_ngraph_link_prediction.log")
     logger.info("Starting link prediction")
     logger.info("Seed: %d", SEED)
     logger.info("Package versions: numpy %s, pandas %s, sklearn %s", np.__version__, pd.__version__, sklearn.__version__)

@@ -143,7 +143,7 @@ plot_dt <- NULL
 plot_kind <- NULL
 if (!is.null(vgae_summary) && nrow(vgae_summary) > 0) {
   plot_dt <- rbind(
-    vgae_summary[, .(threshold, method, metric = "VGAE held-out AUC", value = best_heldout_auc)],
+    vgae_summary[, .(threshold, method, metric = "VGAE checkpoint validation AUC", value = best_heldout_auc)],
     vgae_summary[, .(threshold, method, metric = "VGAE module k", value = module_k)]
   )
   if (!is.null(diffpool_summary) && nrow(diffpool_summary) > 0) {

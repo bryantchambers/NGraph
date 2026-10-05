@@ -1,0 +1,95 @@
+{
+  "schema_version": "mvp-1",
+  "relations": {
+    "site_has_sample": {
+      "source": [
+        "Site"
+      ],
+      "target": [
+        "Sample"
+      ]
+    },
+    "control_has_sample": {
+      "source": [
+        "ControlContext"
+      ],
+      "target": [
+        "Sample"
+      ]
+    },
+    "sample_observed_taxon": {
+      "source": [
+        "Sample"
+      ],
+      "target": [
+        "Taxon"
+      ]
+    },
+    "sample_read_supported_taxon": {
+      "source": [
+        "Sample"
+      ],
+      "target": [
+        "Taxon"
+      ]
+    },
+    "taxon_member_of_module": {
+      "source": [
+        "Taxon"
+      ],
+      "target": [
+        "Module"
+      ]
+    },
+    "site_has_module_enrichment": {
+      "source": [
+        "Site"
+      ],
+      "target": [
+        "Module"
+      ]
+    },
+    "sample_has_measurement": {
+      "source": [
+        "Sample"
+      ],
+      "target": [
+        "ProxyMeasurement"
+      ]
+    },
+    "measurement_of_variable": {
+      "source": [
+        "ProxyMeasurement"
+      ],
+      "target": [
+        "ProxyVariable"
+      ]
+    },
+    "measurement_derived_from_dataset": {
+      "source": [
+        "ProxyMeasurement"
+      ],
+      "target": [
+        "Dataset"
+      ]
+    },
+    "entity_has_ontology_term": {
+      "source": [
+        "Site",
+        "Sample",
+        "Taxon",
+        "ProxyMeasurement"
+      ],
+      "target": [
+        "OntologyTerm"
+      ]
+    }
+  },
+  "policies": {
+    "controls": "ControlContext is separate from geological Site",
+    "taxon_evidence": "Read support does not establish positive TAD abundance",
+    "modules": "Exploratory assignments scoped by branch, threshold, method and model",
+    "ontology_edges": "Namespace placeholders; not curated ontology term grounding",
+    "proxy_matching": "Physical core + depth; GeoB R1/R2 aliases; 0.5 cm within-level match, then bracketed linear interpolation of continuous variables; no extrapolation or age-only matching"
+  }
+}

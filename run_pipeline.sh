@@ -14,9 +14,11 @@ PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 S="${PROJ}/scripts"
 
 START="00"
+STOP="15"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --start) START="$2"; shift 2 ;;
+    --stop) STOP="$2"; shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -33,6 +35,7 @@ normalize_step() {
 }
 
 START="$(normalize_step "${START}")"
+STOP="$(normalize_step "${STOP}")"
 
 PIPELINE=(
   "00|Import feedstock into /src/data|00_ngraph_import_feedstock.R"
@@ -49,7 +52,7 @@ PIPELINE=(
   "11|Evidence card generation|11_ngraph_build_evidence_cards.R"
   "12|Local retrieval index|12_ngraph_build_retrieval_index.py"
   "13|Natural-language query engine|13_ngraph_query_engine.py"
-  "14|Knowledge graph import|15_kg_import_site_sample_proxies.R"
+  "15|Knowledge graph import|15_kg_import_site_sample_proxies.R"
 )
 
 start_index=-1
@@ -84,16 +87,19 @@ else
 fi
 
 cd "${PROJ}"
+RUNTIME_LOG_DIR="${PROJ}/logs/${NG_LOG_SCOPE:-${NG_BRANCH:-abundance_thresholding}}"
+mkdir -p "${RUNTIME_LOG_DIR}"
 
 for i in "${!PIPELINE[@]}"; do
   (( i < start_index )) && continue
+  [[ "${PIPELINE[$i]%%|*}" > "${STOP}" ]] && break
   IFS="|" read -r step_id step_name script_name <<< "${PIPELINE[$i]}"
   script_path="${S}/${script_name}"
   [[ -f "${script_path}" ]] || { echo "Pipeline script not found: ${script_path}" >&2; exit 1; }
   log "=== ${step_id}. ${step_name} ==="
   case "${script_path}" in
     *.R) "${RSCRIPT}" "${script_path}" ;;
-    *.py) "${PYTHON}" "${script_path}" ;;
+    *.py) "${PYTHON}" "${script_path}" 2>&1 | tee "${RUNTIME_LOG_DIR}/${step_id}_runtime.log" ;;
     *) echo "Unsupported pipeline script type: ${script_path}" >&2; exit 1 ;;
   esac
 done

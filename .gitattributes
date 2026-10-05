@@ -1,0 +1,3 @@
+
+# Native TSV trailing tabs encode missing values; preserve hashed feedstock.
+data/kg_feedstock/*.tsv whitespace=-blank-at-eol

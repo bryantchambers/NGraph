@@ -1,3 +1,5 @@
+> **Historical workflow snapshot dated 2026-06-25:** This document preserves the workflow and diagrams as recorded at that time. It is not the current implementation status. See [repository review 2026-10-05](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md) and [current workflow 2026-10-05](current_workflow_2026-10-05.md) for the audited state.
+
 # Current NGraph Workflow v4
 
 - Last updated: 2026-06-25 00:00:00 UTC

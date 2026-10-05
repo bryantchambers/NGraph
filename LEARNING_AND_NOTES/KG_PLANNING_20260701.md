@@ -116,3 +116,7 @@ Checkpoint for database adoption:
 - The first KG build targets the live exploratory branch `permissive_hybrid_prev10`, while keeping branch support generic.
 - Ontology linking starts as identifier columns and mapping tables, not full OWL reasoning.
 - Sources for ontology choices: OBO Relation Ontology, ENVO, MIxS/GSC, W3C PROV-O, NCBI Taxonomy, GTDB, GO, and ChEBI. See official references: RO `https://obofoundry.org/ontology/ro.html`, ENVO `https://obofoundry.org/ontology/envo.html`, MIxS `https://github.com/genomicsStandardsConsortium/mixs`, PROV-O `https://www.w3.org/TR/prov-o/`, NCBI Taxonomy `https://www.ncbi.nlm.nih.gov/taxonomy`, GTDB `https://gtdb.ecogenomic.org/`, GO `https://geneontology.org/`, ChEBI `https://www.ebi.ac.uk/chebi/`.
+
+## Repository review update (2026-10-05)
+
+The code-grounded current status, implementation gaps, validation limits, and prioritized acceptance criteria are maintained in [REPOSITORY_REVIEW_2026-10-05.md](REPOSITORY_REVIEW_2026-10-05.md). This dated pointer supplements the historical planning and learning notes above; retain their original context when reading them.

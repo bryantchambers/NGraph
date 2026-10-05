@@ -113,7 +113,7 @@ def main() -> int:
     parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "abundance_thresholding"))
     args = parser.parse_args()
 
-    logger = setup_logger(project_root() / "logs" / "12_ngraph_build_retrieval_index.log")
+    logger = setup_logger(project_root() / "logs" / os.environ.get("NG_LOG_SCOPE", "") / "12_ngraph_build_retrieval_index.log")
     logger.info("Starting retrieval index build")
     logger.info("Seed: %d", SEED)
     logger.info("Package versions: numpy %s, pandas %s, scipy %s, sklearn %s", np.__version__, pd.__version__, scipy.__version__, sklearn.__version__)

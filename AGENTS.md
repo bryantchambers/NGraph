@@ -1,4 +1,6 @@
 # Project: SuperGraphs to align site dependent time distortions in sediment compression
+
+> **Current-state audit (2026-10-05):** The latest code/artifact review is in [REPOSITORY_REVIEW_2026-10-05.md](LEARNING_AND_NOTES/REPOSITORY_REVIEW_2026-10-05.md). The active checkout is `/maps/projects/caeg/people/gfx654/Projects/NGraph`; `/src` is absent here. The graph-learning histories in the threshold benchmark are five-epoch smoke runs, the July file-backed KG needs integrity/schema work, and the dashboard has endpoint probes but no completed browser UI validation. Read the review before treating older “current” labels, module calls, scores, or KG paths as validated.
 ## Role
 A Senior Research Data Scientist and bioinformatician is needed. The goal is to write, debug, and execute R and Python analysis scripts to understand functional ancient microbial communities in paleo ocean systems.
 
@@ -269,3 +271,8 @@ Current focus is to bridge the learned graph outputs with local natural-language
 ## Feedback Loop
 
 - If a script runs without errors and produces a `.png` plot, log it as `Method Validated`.
+
+
+## MVP sensitivity update — 2026-10-05
+
+The active MVP review run is `mvp_permissive_mixed_20261005`: 1,797 taxa, 214 samples, mixed aggregated TAD/read fallback CLR, six exploratory VGAE modules. The launcher defaults to this explicitly labelled sensitivity; TAD-only comparisons remain separate. KG matching uses physical core/depth with confirmed GeoB aliases, 0.5-cm within-level matches, bracketed interpolation, retained source provenance and explicit unknown units. See `LEARNING_AND_NOTES/KG_SUBSTRATE_AND_MIXED_SENSITIVITY_2026-10-05.md`.

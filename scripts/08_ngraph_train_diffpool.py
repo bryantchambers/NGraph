@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -74,11 +75,12 @@ class DiffPoolNet(nn.Module):
 
     def forward(self, x: torch.Tensor, adj: torch.Tensor, mask: torch.Tensor) -> Dict[str, torch.Tensor]:
         z0 = self.embed1(x, adj, mask)
-        s1 = torch.softmax(self.assign1(x, adj, mask), dim=-1)
-        x1, adj1, link1, ent1 = dense_diff_pool(z0, adj, s1, mask)
+        logits1 = self.assign1(x, adj, mask)
+        s1 = torch.softmax(logits1, dim=-1)
+        x1, adj1, link1, ent1 = dense_diff_pool(z0, adj, logits1, mask)
         mask1 = torch.ones(x1.size(0), x1.size(1), device=x.device)
         z1 = self.embed2(x1, adj1, mask1)
-        s2 = torch.softmax(self.assign2(x1, adj1, mask1), dim=-1)
+        s2 = self.assign2(x1, adj1, mask1)
         x2, adj2, link2, ent2 = dense_diff_pool(z1, adj1, s2, mask1)
         return {
             "z0": z0,
@@ -123,6 +125,9 @@ def numeric_feature_frame(df: pd.DataFrame, exclude: List[str]) -> Tuple[pd.Data
     if not cols:
         raise SystemExit("No numeric feature columns available after excluding: " + ", ".join(exclude))
     features = df[cols].replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(np.float32)
+    # Transductive feature scaling: all exported nodes are visible; this is not an unseen-site evaluation.
+    scale = features.std(ddof=0).replace(0.0, 1.0)
+    features = ((features - features.mean()) / scale).clip(-8.0, 8.0).astype(np.float32)
     return features, cols
 
 
@@ -148,6 +153,8 @@ def build_site_graphs(
     if not feature_cols:
         raise SystemExit("No numeric taxon-site feature columns were found.")
     taxon_site = taxon_site.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    context = taxon_site[feature_cols].astype(float)
+    taxon_site[feature_cols] = ((context - context.mean()) / context.std(ddof=0).replace(0.0, 1.0)).clip(-8.0, 8.0)
 
     n_taxa = len(taxon_order)
     n_sites = len(site_order)
@@ -270,7 +277,7 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 160) -> 
         )
         if loss.item() < best_loss:
             best_loss = float(loss.item())
-            best_state = {"epoch": epoch, "state_dict": model.state_dict()}
+            best_state = {"epoch": epoch, "state_dict": copy.deepcopy(model.state_dict())}
 
     if best_state is not None:
         model.load_state_dict(best_state["state_dict"])
@@ -281,7 +288,8 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 160) -> 
 
     s1 = out["s1"].cpu().numpy()
     assignment_entropy = -(s1 * np.log(s1 + 1e-12)).sum(axis=-1)
-    consensus = s1.mean(axis=0)
+    presence_mask = mask.cpu().numpy()
+    consensus = (s1 * presence_mask[:, :, None]).sum(axis=0) / np.maximum(presence_mask.sum(axis=0)[:, None], 1)
     consensus_module = consensus.argmax(axis=-1)
     mask_np = mask.cpu().numpy()
 
@@ -337,7 +345,7 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 160) -> 
 
     torch.save(
         {
-            "state_dict": model.state_dict(),
+            "state_dict": copy.deepcopy(model.state_dict()),
             "threshold": threshold,
             "method": method,
             "assign_dim_1": assign_dim_1,
@@ -407,7 +415,7 @@ def main() -> int:
     parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "abundance_thresholding"))
     parser.add_argument("--threshold", default=None, help="Limit to one prevalence directory, e.g. prev_5")
     parser.add_argument("--method", default=None, help="Limit to one graph method")
-    parser.add_argument("--epochs", type=int, default=160)
+    parser.add_argument("--epochs", type=int, default=int(os.environ.get("NG_TRAIN_EPOCHS", "160")))
     args = parser.parse_args()
 
     root = deep_root(args.branch)

@@ -80,7 +80,9 @@ primary_taxon_taxon <- safe_fread(file.path(primary_dirs$tables, "hetero_taxon_t
 primary_taxon_site <- safe_fread(file.path(primary_dirs$tables, "hetero_taxon_site_edges.tsv"))
 primary_site_graphs <- safe_fread(file.path(primary_thr_dirs$tables, "ngraph_site_graph_summary.tsv"))
 primary_sample_qc <- safe_fread(file.path(primary_thr_dirs$tables, "ngraph_sample_qc.tsv"))
-primary_abund <- readRDS(file.path(primary_thr_dirs$matrices, "ngraph_tax_abund_tad_taxa_by_sample.rds"))
+primary_abund_path <- file.path(primary_thr_dirs$matrices, "ngraph_tax_abundance_taxa_by_sample.rds")
+if (!file.exists(primary_abund_path)) primary_abund_path <- file.path(primary_thr_dirs$matrices, "ngraph_tax_abund_tad_taxa_by_sample.rds")
+primary_abund <- readRDS(primary_abund_path)
 primary_clr <- readRDS(file.path(primary_thr_dirs$matrices, "ngraph_clr_global.rds"))
 primary_vgae <- safe_fread(file.path(primary_dirs$tables, "vgae_taxon_modules.tsv"))
 primary_diffpool <- safe_fread(file.path(primary_dirs$tables, "diffpool_consensus_modules.tsv"))
@@ -393,6 +395,7 @@ writeLines(json_lines, jsonl_path)
 sample_abund <- as.data.table(as.table(primary_abund))
 setnames(sample_abund, c("taxon", "sample", "abundance"))
 sample_abund <- merge(sample_abund, primary_sample_qc[, .(sample = label, core, age_kyr, mis, sst)], by = "sample", all.x = TRUE, sort = FALSE)
+sample_abund[, abundance_mode := NG_PARAMS$abundance_mode]
 fwrite(sample_abund, file.path(discovery_root, "tables", "sample_taxon_abundance_long.tsv"), sep = "\t")
 
 sample_clr <- as.data.table(as.table(primary_clr))

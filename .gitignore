@@ -9,3 +9,9 @@ results/ngraph/
  LEARNING_AND_NOTES/SMDB_*.tsv
  LEARNING_AND_NOTES/SMDB_*.csv
  LEARNING_AND_NOTES/SMDB_*.zip
+
+# Generated prototype logs and Python bytecode
+__pycache__/
+*.py[cod]
+logs/mvp_*/
+logs/kg_substrate_*/
