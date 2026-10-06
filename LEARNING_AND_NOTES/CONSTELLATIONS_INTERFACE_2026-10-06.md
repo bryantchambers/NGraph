@@ -16,6 +16,10 @@ The new `scripts/ngraph_constellations_catalog.py` computes the Overview and fil
 
 Run `bash start_server.sh 10291`; the default workstream is `mvp_permissive_mixed_20261005`, with `prev_10` and Pearson as the active view. Open `http://localhost:10291/`. Set `NG_BRANCH` and `NG_PRIMARY_THRESHOLD` for another output workstream. The historical TAD-only run remains separate.
 
+## Active service and archive status
+
+Port **10291** is the active Constellations service. The legacy browser that served `abundance_thresholding` on port **10289** has been shut down and is archived; do not use it as the current interface. This operational status was confirmed on 2026-10-06.
+
 Validation on the mixed workstream covered Python syntax; JavaScript syntax with Node; the live Overview, module selection, supergraph, cards, local query, downloads and source files; route and asset serving; legacy redirects; bounded, type-diverse KG neighborhoods and typed metapaths; and rejection of an unlisted file. `tests/verify_mvp_http.py --branch mvp_permissive_mixed_20261005 --port 10291` passed. Headless Chromium rendered and visually checked desktop Overview, KG browser, metapath example, Modules, Query, Data, and a mobile Overview. The graph preview was adjusted after that inspection to hide crowded labels and preserve connected node types. Manual point-and-click acceptance remains useful before an external MVP review. This is an interface and service reorganization, not a new scientific validation of modules or KG learning.
 
 Runtime versions observed: Python 3.14.5, pandas 2.3.3, NumPy 2.4.6, NetworkX 3.6.1, and vendored Cytoscape.js 3.30.2. No packages were installed.
