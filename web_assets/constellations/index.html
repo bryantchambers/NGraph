@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2eee5">
+  <title>Constellations</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/constellations/favicon.svg">
+  <link rel="stylesheet" href="/assets/constellations/styles.css">
+  <script defer src="/assets/vendor/cytoscape.min.js"></script>
+  <script defer src="/assets/constellations/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <a class="brand" href="/overview" aria-label="Constellations overview">
+        <svg viewBox="0 0 42 42" aria-hidden="true"><path d="M8 29 17 10 31 15 25 33 8 29 31 15"/><circle cx="8" cy="29" r="2.5"/><circle cx="17" cy="10" r="2.5"/><circle cx="31" cy="15" r="2.5"/><circle cx="25" cy="33" r="2.5"/></svg>
+        <span><strong>Constellations</strong><small>Explore the hidden structure</small></span>
+      </a>
+      <div class="nav-caption">Explore</div>
+      <nav id="primary-nav">
+        <a href="/overview" data-route="overview"><span class="nav-icon">◫</span>Overview</a>
+        <a href="/knowledge-graph" data-route="knowledge-graph"><span class="nav-icon">✣</span>Knowledge Graph</a>
+        <a href="/query" data-route="query"><span class="nav-icon">◌</span>Query</a>
+        <a href="/modules" data-route="modules"><span class="nav-icon">✦</span>Modules</a>
+        <a href="/data" data-route="data"><span class="nav-icon">▤</span>Data</a>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="eyebrow">Active workstream</div>
+        <div id="sidebar-branch" class="branch-label">Loading…</div>
+        <div id="sidebar-run" class="sidebar-status">Reading run state</div>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <button id="mobile-nav-toggle" class="icon-button mobile-only" type="button" aria-label="Toggle navigation" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+        <div class="breadcrumb"><span>Constellations</span><span class="crumb-divider">/</span><strong id="page-crumb">Overview</strong></div>
+        <div class="top-actions"><span id="analysis-badge" class="badge badge-soft">Loading analysis</span><span id="service-state" class="service-state">● Live data</span></div>
+      </header>
+      <main id="app-view" tabindex="-1"><div class="loading-state">Opening Constellations…</div></main>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

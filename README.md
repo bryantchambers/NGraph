@@ -222,4 +222,8 @@ The current MVP launcher uses `hybrid_aggregated_tad_then_read`: damaged source 
 
 The mixed KG now uses curated XRF, user-confirmed GeoB physical-core aliases, depth matches within 0.5 cm and bracketed linear interpolation without extrapolation. Its schema, source-value reconstruction, coverage accounting and GeoB library consistency checks pass. Unknown native units and large interpolation gaps remain explicit. The current browser is `http://localhost:10291/kg/paths`; port 10290 retains the earlier TAD-only prototype. See [current mixed sensitivity and KG report](LEARNING_AND_NOTES/KG_SUBSTRATE_AND_MIXED_SENSITIVITY_2026-10-05.md).
 
+## Constellations interface (2026-10-06)
+
+The MVP web service is now **Constellations**. Start it with `bash start_server.sh 10291` and open `http://localhost:10291/`. The default workstream is the permissive mixed analysis; `NG_BRANCH` and `NG_PRIMARY_THRESHOLD` select another run. A left rail leads to Overview, Knowledge Graph, Query, Modules and Data. The KG workspace has separate graph browser, typed metapath and schema tabs; Query keeps evidence beside the conversation; Modules includes the supergraph, group explorer, embeddings and figures; Data includes reports, evidence cards and allowlisted downloads. Older `/kg/*` bookmarks redirect to the new views. See [interface implementation and validation notes](LEARNING_AND_NOTES/CONSTELLATIONS_INTERFACE_2026-10-06.md). Earlier sections above record the interface before this redesign.
+
 Run a fresh mixed MVP with `bash run_mvp.sh`. To reproduce the TAD-only comparison, use `NG_ABUNDANCE_MODE=hybrid_prevalence_tad_matrix bash run_mvp.sh`. Both commands create a fresh run branch by default.

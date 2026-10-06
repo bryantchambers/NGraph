@@ -276,3 +276,7 @@ Current focus is to bridge the learned graph outputs with local natural-language
 ## MVP sensitivity update — 2026-10-05
 
 The active MVP review run is `mvp_permissive_mixed_20261005`: 1,797 taxa, 214 samples, mixed aggregated TAD/read fallback CLR, six exploratory VGAE modules. The launcher defaults to this explicitly labelled sensitivity; TAD-only comparisons remain separate. KG matching uses physical core/depth with confirmed GeoB aliases, 0.5-cm within-level matches, bracketed interpolation, retained source provenance and explicit unknown units. See `LEARNING_AND_NOTES/KG_SUBSTRATE_AND_MIXED_SENSITIVITY_2026-10-05.md`.
+
+## Constellations interface update — 2026-10-06
+
+The active web interface is **Constellations** at `/`, started with `bash start_server.sh 10291`. Its left rail organizes Overview, Knowledge Graph, Query, Modules and Data. The default workstream is the permissive mixed MVP and the default view is `prev_10`/Pearson; `NG_BRANCH` and `NG_PRIMARY_THRESHOLD` can select other runs. Browser HTML, CSS and JavaScript live in `web_assets/constellations/`, while the numbered Python service keeps API compatibility. See `LEARNING_AND_NOTES/CONSTELLATIONS_INTERFACE_2026-10-06.md`. The older web-service notes above are historical.

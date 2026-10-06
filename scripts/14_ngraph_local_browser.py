@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local browser for the NGraph deep knowledge discovery artifacts."""
+"""Constellations: branch-scoped knowledge graph and module discovery service."""
 
 from __future__ import annotations
 
@@ -8,8 +8,11 @@ import html
 import importlib.util
 import json
 import logging
+import mimetypes
 import os
+import shutil
 import sys
+import threading
 from collections import defaultdict, deque
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +33,7 @@ from ngraph_discovery_common import combo_root, deep_modules_root, kg_root, know
 
 
 from ngraph_kg_connectivity import ConnectivityIndex, CATALOG
+from ngraph_constellations_catalog import build_catalog, build_overview
 
 SEED = 42
 np.random.seed(SEED)
@@ -39,13 +43,15 @@ def primary_threshold_label() -> str:
     label = os.environ.get("NG_PRIMARY_THRESHOLD_LABEL")
     if label:
         return label
-    raw = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_THRESHOLD", os.environ.get("NG_PRIMARY_THRESHOLD", "5"))
+    raw = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_THRESHOLD", os.environ.get("NG_PRIMARY_THRESHOLD", "10"))
     raw = raw.replace("prev_", "")
     return f"prev_{raw}"
 
 
 PRIMARY_THRESHOLD = primary_threshold_label()
 PRIMARY_METHOD = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_METHOD", os.environ.get("NG_PRIMARY_METHOD", "pearson"))
+# The query engine is imported at runtime and must read the same branch threshold.
+os.environ.setdefault("NG_PRIMARY_THRESHOLD_LABEL", PRIMARY_THRESHOLD)
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
 
@@ -57,7 +63,7 @@ def setup_logger(log_path: Path) -> logging.Logger:
     logger.setLevel(logging.INFO)
     logger.propagate = False
     formatter = logging.Formatter("[%(asctime)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+    file_handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
     file_handler.setFormatter(formatter)
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(formatter)
@@ -79,7 +85,7 @@ def load_query_module():
 def optional_table(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
-    return pd.read_csv(path, sep="\t")
+    return pd.read_csv(path, sep="\t", low_memory=False)
 
 
 def optional_json(path: Path) -> dict:
@@ -311,7 +317,7 @@ def safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-class NGraphBrowser:
+class ConstellationsService:
     def __init__(self, branch: str):
         self.branch = branch
         self.discovery_dir = knowledge_root(branch)
@@ -356,6 +362,8 @@ class NGraphBrowser:
         self.kg_sites = load_text_table(self.kg_dir / "tables" / "kg_sites.tsv")
         self.kg_datasets = load_text_table(self.kg_dir / "tables" / "kg_datasets.tsv")
         self.kg_manifest = optional_json(self.kg_dir / "kg_manifest.json")
+        self.run_manifest = optional_json(self.global_dir / branch / "run_manifest.json")
+        self.kg_substrate_validation = optional_json(self.kg_dir / "tables" / "kg_substrate_validation.json")
         if not self.kg_nodes.empty and "node_id" in self.kg_nodes.columns:
             self.kg_nodes["node_id"] = self.kg_nodes["node_id"].astype(str)
         if not self.kg_edges.empty:
@@ -412,6 +420,18 @@ class NGraphBrowser:
             "threshold": PRIMARY_THRESHOLD,
             "method": PRIMARY_METHOD,
         }
+
+    def artifact_signature(self) -> tuple:
+        """Detect completed output replacement while the service is running."""
+        paths = [
+            self.global_dir / self.branch / "run_manifest.json",
+            self.kg_dir / "tables" / "kg_nodes.tsv",
+            self.kg_dir / "tables" / "kg_edges.tsv",
+            self.discovery_dir / "indexes" / "card_index.tsv",
+            self.discovery_dir / "tables" / "sample_taxon_abundance_long.tsv",
+            self.deep_modules_dir / PRIMARY_THRESHOLD / PRIMARY_METHOD / "tables" / "vgae_taxon_modules.tsv",
+        ]
+        return tuple((path.stat().st_mtime_ns, path.stat().st_size) if path.exists() else None for path in paths)
 
     def summary(self) -> Dict[str, Any]:
         card_counts = self.cards.groupby("card_type").size().sort_values(ascending=False).reset_index(name="count") if not self.cards.empty else pd.DataFrame()
@@ -569,13 +589,8 @@ class NGraphBrowser:
             taxon_nodes = taxon_nodes.merge(modules[["taxon", "module_id"]], on="taxon", how="left")
         if taxon_nodes.empty:
             return pd.DataFrame(), pd.DataFrame(), ""
-        focus_df = taxon_nodes.copy()
-        if module_id:
-            focus_df = focus_df[focus_df["module_id"].astype(str) == str(module_id)]
-        if focus_df.empty:
-            focus_df = taxon_nodes.copy()
         summary = (
-            focus_df.groupby("module_id")
+            taxon_nodes.groupby("module_id")
             .agg(
                 taxa=("taxon", "count"),
                 top_functional_group=("functional_group", lambda s: s.dropna().astype(str).value_counts().index[0] if s.dropna().size else ""),
@@ -603,12 +618,9 @@ class NGraphBrowser:
                 how="left",
             )
         summary = summary.sort_values(["taxa", "module_id"], ascending=[False, True])
-        if module_id:
-            focus_rows = focus_df.sort_values(["taxon"]).copy()
-        else:
-            first_module = summary["module_id"].iloc[0] if len(summary) else ""
-            focus_rows = focus_df[focus_df["module_id"].astype(str) == str(first_module)].sort_values(["taxon"]).copy() if first_module else focus_df.head(0)
-            module_id = str(first_module)
+        if not module_id or module_id not in set(summary["module_id"].astype(str)):
+            module_id = str(summary["module_id"].iloc[0]) if len(summary) else ""
+        focus_rows = taxon_nodes[taxon_nodes["module_id"].astype(str) == module_id].sort_values(["taxon"]).copy()
         return summary, focus_rows, module_id
 
     def build_super_graph_payload(self, threshold: str = PRIMARY_THRESHOLD, method: str = PRIMARY_METHOD) -> Dict[str, Any]:
@@ -841,6 +853,7 @@ class NGraphBrowser:
         }
 
     def build_module_payload(self, threshold: str = PRIMARY_THRESHOLD, method: str = PRIMARY_METHOD, kind: str = "vgae", module_id: str = "", limit: int = 40) -> Dict[str, Any]:
+        limit = max(1, min(limit, 2000))
         summary, focus_rows, focus_module = self.module_summary(threshold, method, kind=kind, module_id=module_id)
         if summary.empty:
             return {"title": "Module summary unavailable", "summary": [], "members": [], "svg": build_svg_graph([], [], "Module graph unavailable")}
@@ -853,7 +866,7 @@ class NGraphBrowser:
         graph_edges: List[Dict[str, Any]] = []
         module_node_id = f"{kind}:{focus_module}"
         graph_nodes.append({"id": module_node_id, "label": f"{kind.upper()} {focus_module}", "type": "module", "size": 12.0, "color": color_for_type("module"), "highlight": True})
-        for _, row in focus_rows.head(limit).iterrows():
+        for _, row in focus_rows.head(min(limit, 40)).iterrows():
             taxon = str(row.get("taxon", ""))
             if not taxon:
                 continue
@@ -1064,6 +1077,7 @@ class NGraphBrowser:
         provider = os.environ.get("NG_LLM_PROVIDER", "local").strip().lower() or "local"
         api_key_present = bool((os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip())
         return {
+            "service": "Constellations",
             "status": "ok",
             "branch": self.branch,
             "analysis_label": self.analysis_label(),
@@ -1263,9 +1277,10 @@ class NGraphBrowser:
         visited = {focus}
         frontier = {focus}
         edge_ids = []
-        for _ in range(max(1, depth)):
+        limit = max(1, min(limit, 1000))
+        for _ in range(max(1, min(depth, 3))):
             next_frontier = set()
-            for current in frontier:
+            for current in sorted(frontier):
                 for item in self.kg_neighbors.get(current, []):
                     if allowed_edge_types and str(item.get("edge_type", "")).lower() not in allowed_edge_types:
                         continue
@@ -1275,20 +1290,45 @@ class NGraphBrowser:
                         next_frontier.add(neighbor)
                     if edge_id:
                         edge_ids.append(edge_id)
-                    if len(edge_ids) >= limit * 5:
+                    if len(edge_ids) >= limit * 12:
                         break
-                if len(edge_ids) >= limit * 5:
+                if len(edge_ids) >= limit * 12:
                     break
             frontier = next_frontier - visited
             visited.update(next_frontier)
-            if len(visited) >= limit:
+            if len(edge_ids) >= limit * 12:
                 break
         if node_type:
-            node_frame = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(visited) & (self.kg_nodes["node_type"].astype(str).str.lower() == node_type.lower())].copy()
-            visited = set(node_frame["node_id"].astype(str).tolist()) | {focus}
+            node_frame = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(visited) & ((self.kg_nodes["node_type"].astype(str).str.lower() == node_type.lower()) | (self.kg_nodes["node_id"].astype(str) == focus))].copy()
         else:
             node_frame = self.kg_nodes[self.kg_nodes["node_id"].astype(str).isin(visited)].copy()
-        node_frame = node_frame.head(max(1, min(limit, 1000)))
+        if len(node_frame) > limit:
+            # A site can have more direct sample neighbors than the display cap.
+            # Reserve room for taxa, measurements and modules at depth >= 2 so
+            # the canvas shows an interpretable cross-type neighborhood.
+            ordered = node_frame.sort_values("node_id")
+            selected_ids = [focus]
+            if not node_type and depth >= 2:
+                quotas = {"Site": 2, "Sample": max(6, limit // 4), "Taxon": max(6, limit * 2 // 5),
+                          "ProxyMeasurement": max(3, limit // 8), "Module": max(2, limit // 10),
+                          "ProxyVariable": max(2, limit // 14)}
+                for kind, quota in quotas.items():
+                    subset = ordered[ordered["node_type"].astype(str) == kind]
+                    if kind in {"Taxon", "ProxyMeasurement", "Module"}:
+                        selected = set(selected_ids)
+                        subset = subset.assign(visible_links=subset["node_id"].map(
+                            lambda value: sum(item["neighbor_id"] in selected for item in self.kg_neighbors.get(str(value), []))
+                        )).sort_values(["visible_links", "node_id"], ascending=[False, True])
+                    for candidate in subset["node_id"].astype(str).head(quota):
+                        if candidate not in selected_ids and len(selected_ids) < limit:
+                            selected_ids.append(candidate)
+            for candidate in ordered["node_id"].astype(str):
+                if len(selected_ids) >= limit:
+                    break
+                if candidate not in selected_ids:
+                    selected_ids.append(candidate)
+            node_frame = node_frame[node_frame["node_id"].astype(str).isin(selected_ids)].copy()
+        node_frame = node_frame.head(limit)
         retained_ids = set(node_frame["node_id"].astype(str))
         edge_frame = self.kg_edges[self.kg_edges["edge_id"].astype(str).isin(set(edge_ids)) & self.kg_edges["source_id"].astype(str).isin(retained_ids) & self.kg_edges["target_id"].astype(str).isin(retained_ids)].copy()
         if not edge_frame.empty and limit > 0:
@@ -1314,7 +1354,7 @@ class NGraphBrowser:
             "edges": dataframe_records(edge_frame, limit=limit * 4),
             "elements": elements,
             "summary": summary,
-            "truncated": len(node_frame) >= limit or len(edge_frame) >= limit * 5,
+            "truncated": len(visited) > len(node_frame) or len(edge_ids) >= limit * 12 or len(edge_frame) >= limit * 5,
         }
 
     def analysis_label(self):
@@ -1422,1519 +1462,9 @@ class NGraphBrowser:
         }
 
 
-HTML_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>NGraph Local Browser</title>
-  <style>
-    :root {
-      --bg: #f6f4ee;
-      --panel: #ffffff;
-      --panel-2: #f1ede5;
-      --line: #d8d0c2;
-      --text: #1d2320;
-      --muted: #5f6b64;
-      --accent: #2f6b4f;
-      --accent-2: #8b5e3c;
-      --warning: #9a6b2f;
-      --danger: #b24b4b;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: linear-gradient(180deg, #fbfaf6 0%, #f6f4ee 48%, #ece6dc 100%);
-      color: var(--text);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      backdrop-filter: blur(16px);
-      background: linear-gradient(180deg, rgba(30, 70, 52, 0.97), rgba(43, 88, 67, 0.96));
-      border-bottom: 1px solid rgba(18, 44, 32, 0.28);
-      padding: 18px 24px;
-      color: #f8f6f1;
-      box-shadow: 0 10px 26px rgba(18, 44, 32, 0.14);
-    }
-    header a { color: #f8f6f1; }
-    header .muted { color: rgba(248, 246, 241, 0.78); }
-    header .title h1, header .title .sub { color: #f8f6f1; }
-    .title {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .title h1 {
-      margin: 0;
-      font-size: 24px;
-      letter-spacing: 0.02em;
-    }
-    .title .meta {
-      color: var(--muted);
-      font-size: 13px;
-      text-align: right;
-    }
-    .title .meta-stack {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 8px;
-    }
-    nav {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-    nav a {
-      text-decoration: none;
-      color: var(--text);
-      background: #ffffff;
-      border: 1px solid rgba(93, 79, 61, 0.16);
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 13px;
-    }
-    main {
-      padding: 22px 24px 40px;
-      max-width: 1500px;
-      margin: 0 auto;
-    }
-    section {
-      margin-bottom: 24px;
-      border: 1px solid rgba(93, 79, 61, 0.14);
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.92);
-      box-shadow: 0 20px 45px rgba(64, 51, 36, 0.08);
-      overflow: hidden;
-    }
-    .section-head {
-      padding: 18px 20px 12px;
-      border-bottom: 1px solid rgba(93, 79, 61, 0.12);
-    }
-    .section-head h2 {
-      margin: 0 0 6px;
-      font-size: 18px;
-    }
-    .section-head p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
-    }
-    .section-body {
-      padding: 18px 20px 22px;
-    }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 12px;
-      margin-bottom: 18px;
-    }
-    .stat {
-      background: #fffdf9;
-      border: 1px solid rgba(93, 79, 61, 0.14);
-      border-radius: 16px;
-      padding: 14px;
-    }
-    .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .stat .value { font-size: 28px; margin-top: 6px; font-weight: 700; }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 18px;
-    }
-    .grid-3 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 18px;
-    }
-    .panel {
-      background: #fffdf9;
-      border: 1px solid rgba(93, 79, 61, 0.12);
-      border-radius: 16px;
-      padding: 16px;
-    }
-    .panel h3 {
-      margin: 0 0 12px;
-      font-size: 15px;
-    }
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 14px;
-      align-items: center;
-    }
-    input, select, textarea, button {
-      font: inherit;
-      border-radius: 12px;
-      border: 1px solid rgba(93, 79, 61, 0.18);
-      background: #ffffff;
-      color: var(--text);
-      padding: 10px 12px;
-    }
-    input, select, textarea { min-width: 180px; }
-    textarea { width: 100%; min-height: 100px; resize: vertical; }
-    button {
-      cursor: pointer;
-      background: linear-gradient(135deg, rgba(47, 107, 79, 0.96), rgba(139, 94, 60, 0.92));
-      color: #fffdf9;
-      font-weight: 700;
-      border: none;
-      padding: 10px 14px;
-    }
-    button.secondary {
-      background: #f6f2ea;
-      color: var(--text);
-      border: 1px solid rgba(93, 79, 61, 0.18);
-    }
-    .muted { color: var(--muted); }
-    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
-    .chip {
-      border-radius: 999px;
-      padding: 6px 10px;
-      background: #f8f5ee;
-      border: 1px solid rgba(93, 79, 61, 0.16);
-      color: var(--text);
-      font-size: 12px;
-    }
-    .table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid rgba(93, 79, 61, 0.12); background: #fffdf9; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    thead th {
-      position: sticky; top: 0;
-      background: #f1ede5;
-      color: #2e2a25;
-      text-align: left;
-      padding: 10px 12px;
-      border-bottom: 1px solid rgba(93, 79, 61, 0.16);
-      white-space: nowrap;
-    }
-    tbody td {
-      padding: 9px 12px;
-      border-bottom: 1px solid rgba(93, 79, 61, 0.08);
-      vertical-align: top;
-    }
-    tbody tr:hover { background: rgba(47, 107, 79, 0.05); }
-    .svg-box {
-      width: 100%;
-      min-height: 320px;
-      overflow: auto;
-      border-radius: 16px;
-      border: 1px solid rgba(93, 79, 61, 0.12);
-      background: linear-gradient(180deg, #fffdf9, #f8f5ee);
-    }
-    .svg-box svg { display: block; width: 100%; height: auto; }
-    .report-box {
-      width: 100%;
-      min-height: 260px;
-      max-height: 520px;
-      overflow: auto;
-      white-space: pre-wrap;
-      background: #fffdf9;
-      border: 1px solid rgba(93, 79, 61, 0.12);
-      border-radius: 16px;
-      padding: 14px;
-      color: var(--text);
-    }
-    .status-banner {
-      margin: 14px 24px 0;
-      max-width: 1500px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      border: 1px solid rgba(93, 79, 61, 0.18);
-      background: rgba(255, 253, 249, 0.95);
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
-    }
-    .status-banner.ok {
-      border-color: rgba(47, 107, 79, 0.35);
-      color: #2f6b4f;
-    }
-    .status-banner.warning {
-      border-color: rgba(154, 107, 47, 0.38);
-      color: #9a6b2f;
-    }
-    .status-banner.error {
-      border-color: rgba(178, 75, 75, 0.4);
-      color: #b24b4b;
-    }
-    .two-col {
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 16px;
-    }
-    @media (max-width: 1050px) {
-      .grid-2, .two-col { grid-template-columns: 1fr; }
-      .title { align-items: flex-start; flex-direction: column; }
-      .title .meta { text-align: left; }
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <div class="title">
-      <div>
-        <h1>NGraph Local Browser</h1>
-        <div class="muted">Deep knowledge discovery</div>
-        <div id="analysis-policy" class="muted"></div>
-      </div>
-      <div class="meta-stack">
-        <div class="meta" id="header-meta">Loading summary...</div>
-        <div class="chip-row" id="llm-status"></div>
-      </div>
-    </div>
-    <nav>
-      <a href="#overview">Overview</a>
-      <a href="#cards">Evidence Cards</a>
-      <a href="#links">Predicted Links</a>
-      <a href="#supergraph">Super Graph</a>
-      <a href="#modules">Modules</a>
-      <a href="/kg">Knowledge Graph</a>
-      <a href="#embeddings">Embeddings</a>
-      <a href="#query">Query Console</a>
-      <a href="#reports">Reports</a>
-    </nav>
-  </header>
-  <div id="browser-status" class="status-banner">Loading browser...</div>
-  <script>
-    (function () {
-      var el = document.getElementById("browser-status");
-      if (el) {
-        el.textContent = "Browser JS bootstrap active. Loading summary...";
-        el.className = "status-banner ok";
-      }
-      window.__ngraphBrowserBootstrap = true;
-    })();
-  </script>
-  <main>
-    <section id="overview">
-      <div class="section-head">
-        <h2>Overview</h2>
-        <p>Top-level counts, phase status, and current artifact locations.</p>
-      </div>
-      <div class="section-body">
-        <div class="stats" id="stats"></div>
-        <div class="grid-2">
-          <div class="panel">
-            <h3>Phase Status</h3>
-            <div id="phase-status" class="chip-row"></div>
-          </div>
-          <div class="panel">
-            <h3>Canonical Questions</h3>
-            <div id="questions" class="chip-row"></div>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <section id="cards">
-      <div class="section-head">
-        <h2>Evidence Cards</h2>
-        <p>Browse taxon, site, module, and predicted-link cards with local semantic ranking.</p>
-      </div>
-      <div class="section-body">
-        <div class="controls">
-          <input id="card-query" type="text" placeholder="Search cards..." />
-          <select id="card-type"><option value="">All card types</option></select>
-          <select id="card-threshold"><option value="">All thresholds</option></select>
-          <select id="card-method"><option value="">All methods</option></select>
-          <select id="card-relation"><option value="">All relation types</option></select>
-          <button onclick="loadCards()">Search</button>
-        </div>
-        <div class="table-wrap" id="cards-table"></div>
-      </div>
-    </section>
-
-    <section id="links">
-      <div class="section-head">
-        <h2>Predicted Links</h2>
-        <p>Browse learned taxon-taxon and taxon-site hypotheses. Select a focus node to rebuild the local graph.</p>
-      </div>
-      <div class="section-body">
-        <div class="controls">
-          <select id="link-threshold"><option value="prev_5">prev_5</option></select>
-          <select id="link-method"><option value="pearson">pearson</option></select>
-          <select id="link-relation"><option value="">All relations</option></select>
-          <input id="link-focus" type="text" placeholder="Focus taxon or site" />
-          <button onclick="loadLinks()">Refresh links</button>
-          <button class="secondary" onclick="loadGraph('taxon')">Build taxon graph</button>
-          <button class="secondary" onclick="loadGraph('site')">Build site graph</button>
-        </div>
-        <div class="grid-2">
-          <div class="table-wrap" id="links-table"></div>
-          <div class="svg-box" id="graph-box"></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="supergraph">
-      <div class="section-head">
-        <h2>Super Graph</h2>
-        <p>Graph-of-graphs / site similarity viewer with threshold and method selection.</p>
-      </div>
-      <div class="section-body">
-        <div class="controls">
-          <select id="super-threshold"></select>
-          <select id="super-method"></select>
-          <button onclick="loadSuperGraph()">Refresh super graph</button>
-        </div>
-        <div class="grid-2">
-          <div class="svg-box" id="supergraph-box"></div>
-          <div class="table-wrap" id="supergraph-table"></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="modules">
-      <div class="section-head">
-        <h2>Modules</h2>
-        <p>Browse VGAE and DiffPool modules, membership lists, and their learned structure.</p>
-      </div>
-      <div class="section-body">
-        <div class="controls">
-          <select id="module-kind"><option value="vgae">VGAE</option><option value="diffpool">DiffPool</option></select>
-          <select id="module-threshold"></select>
-          <select id="module-method"></select>
-          <select id="module-id"></select>
-          <button onclick="loadModules()">Refresh modules</button>
-        </div>
-        <div class="grid-2">
-          <div class="svg-box" id="module-box"></div>
-          <div class="table-wrap" id="module-table"></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="knowledge-graph">
-      <div class="section-head">
-        <h2>Knowledge Graph</h2>
-        <p>Browse the site, sample, taxon, module, proxy, and ontology substrate that will anchor the learnable KG.</p>
-      </div>
-      <div class="section-body">
-        <div class="controls">
-          <select id="kg-site"><option value="">All sites</option></select>
-          <input id="kg-taxon" type="text" placeholder="Focus taxon" />
-          <button onclick="loadKG()">Refresh KG</button>
-        </div>
-        <div class="stats" id="kg-stats"></div>
-        <div class="grid-2">
-          <div class="svg-box" id="kg-box"></div>
-          <div class="table-wrap" id="kg-summary-table"></div>
-        </div>
-        <div class="grid-2" style="margin-top: 16px;">
-          <div class="panel">
-            <h3>Selected Nodes</h3>
-            <div class="table-wrap" id="kg-nodes-table"></div>
-          </div>
-          <div class="panel">
-            <h3>Selected Edges</h3>
-            <div class="table-wrap" id="kg-edges-table"></div>
-          </div>
-        </div>
-        <div class="panel" style="margin-top: 16px;">
-          <h3>Measurements</h3>
-          <div class="table-wrap" id="kg-measurements-table"></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="embeddings">
-      <div class="section-head">
-        <h2>Embedding Manifold</h2>
-        <p>Inspect the learned VGAE latent space and highlight any node by ID.</p>
-      </div>
-      <div class="section-body">
-        <div class="controls">
-          <input id="embedding-focus" type="text" placeholder="Focus node ID" />
-          <button onclick="loadEmbeddings()">Refresh embedding view</button>
-        </div>
-        <div class="svg-box" id="embedding-box"></div>
-      </div>
-    </section>
-
-    <section id="query">
-      <div class="section-head">
-        <h2>Query Console</h2>
-        <p>Run the local natural-language query engine against the learned network and evidence cards.</p>
-      </div>
-        <div class="section-body">
-          <div class="panel" style="margin-bottom: 16px;">
-            <textarea id="query-text" placeholder="Ask about taxa, modules, transitions, seeding, or functional capabilities."></textarea>
-            <div class="controls" style="margin-top: 10px;">
-              <label style="display:flex; align-items:center; gap:8px;">
-                <span class="muted">Mode</span>
-                <select id="query-provider">
-                  <option value="local">Local retrieval</option>
-                  <option value="gemini">Gemini synthesis</option>
-                </select>
-              </label>
-              <button onclick="runQuery()">Run query</button>
-              <button class="secondary" onclick="setCanonicalQuery(0)">Transition</button>
-              <button class="secondary" onclick="setCanonicalQuery(1)">Seeding</button>
-              <button class="secondary" onclick="setCanonicalQuery(2)">Function</button>
-            </div>
-        </div>
-        <div class="two-col">
-          <div class="panel">
-            <h3>Answer</h3>
-            <div id="query-answer" class="report-box"></div>
-          </div>
-          <div class="panel">
-            <h3>Semantic Hits</h3>
-            <div class="table-wrap" id="query-table"></div>
-          </div>
-        </div>
-        <div class="two-col" style="margin-top: 16px;">
-          <div class="panel">
-            <h3>Retrieved Evidence</h3>
-            <div class="table-wrap" id="retrieval-table"></div>
-          </div>
-          <div class="panel">
-            <h3>Prompt Preview</h3>
-            <div id="query-prompt" class="report-box"></div>
-          </div>
-        </div>
-        <div class="panel" style="margin-top: 16px;">
-          <h3>Query Debug</h3>
-          <div id="query-debug" class="report-box"></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="reports">
-      <div class="section-head">
-        <h2>Reports</h2>
-        <p>Open the generated markdown reports directly in the browser.</p>
-      </div>
-      <div class="section-body">
-        <div class="controls">
-          <select id="report-select"></select>
-          <button onclick="loadReport()">Load report</button>
-        </div>
-        <div class="report-box" id="report-box">Select a report to view its contents.</div>
-      </div>
-    </section>
-  </main>
-
-  <script>
-    const PRIMARY_THRESHOLD = "prev_5";
-    const PRIMARY_METHOD = "pearson";
-    window.__ngraphBrowserMainScript = true;
-    const state = {
-      summary: null,
-      cards: [],
-      questions: [],
-      llmProvider: "local",
-      kgSites: [],
-    };
-
-    function escapeHtml(text) {
-      return String(text == null ? "" : text).replace(/[&<>"']/g, (m) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      }[m]));
-    }
-
-    function tableHtml(rows, maxRows = 80) {
-      if (!rows || rows.length === 0) {
-        return '<div class="panel"><div class="muted">No rows.</div></div>';
-      }
-      const cols = Object.keys(rows[0]);
-      const body = rows.slice(0, maxRows).map(row => {
-        const cells = cols.map(col => `<td>${escapeHtml(row[col] == null ? "" : row[col])}</td>`).join("");
-        return `<tr>${cells}</tr>`;
-      }).join("");
-      return `<table><thead><tr>${cols.map(col => `<th>${escapeHtml(col)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
-    }
-
-    function chip(text, color = "") {
-      const style = color ? ` style="border-color:${color}; color:${color};"` : "";
-      return `<span class="chip"${style}>${escapeHtml(text)}</span>`;
-    }
-
-    function renderLlmStatus(payload = {}) {
-      const provider = payload.llm_provider || state.llmProvider || "local";
-      const status = payload.llm_status || (provider === "gemini" ? "not_run" : "local");
-      const model = payload.llm_model || "";
-      const parts = [
-        chip(`Mode: ${provider}` , provider === "gemini" ? "var(--accent-2)" : "var(--accent)"),
-        chip(`LLM: ${status}`, status === "ok" ? "var(--accent)" : (status && status !== "local" ? "var(--warning)" : "var(--accent)")),
-      ];
-      if (model) {
-        parts.push(chip(`Model: ${model}`, "var(--accent-2)"));
-      }
-      document.getElementById("llm-status").innerHTML = parts.join("");
-    }
-
-    function setBrowserStatus(message, kind = "info") {
-      const el = document.getElementById("browser-status");
-      if (!el) return;
-      el.className = kind ? `status-banner ${kind}` : "status-banner";
-      el.textContent = message;
-    }
-
-    function handleBrowserError(prefix, err) {
-      const message = `${prefix}: ${err && err.message ? err.message : String(err)}`;
-      setBrowserStatus(message, "error");
-      console.error(prefix, err);
-    }
-
-    async function safeLoad(label, fn) {
-      try {
-        await fn();
-        return true;
-      } catch (err) {
-        handleBrowserError(label, err);
-        return false;
-      }
-    }
-
-    function bindEvent(id, eventName, handler) {
-      const el = document.getElementById(id);
-      if (!el) {
-        console.warn(`Missing element for ${id}`);
-        return;
-      }
-      el.addEventListener(eventName, handler);
-    }
-
-    async function fetchJson(url) {
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`${res.status} ${res.statusText}`);
-      }
-      return await res.json();
-    }
-
-    function populateSelect(id, values, includeAll = true, placeholder = "") {
-      const el = document.getElementById(id);
-      el.innerHTML = "";
-      if (includeAll) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = placeholder || "All";
-        el.appendChild(opt);
-      }
-      values.filter(Boolean).forEach(value => {
-        const opt = document.createElement("option");
-        opt.value = value;
-        opt.textContent = value;
-        el.appendChild(opt);
-      });
-    }
-
-    async function init() {
-      setBrowserStatus("Main browser script active. Loading summary and panels...", "info");
-      const summary = await fetchJson("/api/summary");
-      state.summary = summary;
-      state.questions = summary.questions || [];
-      state.llmProvider = summary.llm_provider_default || "local";
-      state.kgSites = summary.kg_sites || [];
-      document.getElementById("header-meta").textContent = `${summary.branch} | ${summary.primary_threshold} / ${summary.primary_method}`;
-      renderLlmStatus({ llm_provider: state.llmProvider, llm_status: state.llmProvider === "gemini" ? "pending_key" : "local" });
-      const counts = summary.counts || {};
-      const stats = [
-        ["Cards", counts.cards || 0],
-        ["Embeddings", counts.vgae_embeddings || 0],
-        ["Predicted links", counts.link_predictions || 0],
-        ["Query rows", counts.query_results || 0],
-        ["Reports", counts.reports || 0],
-        ["Combos", (summary.combos || []).length],
-      ];
-      document.getElementById("stats").innerHTML = stats.map(([label, value]) => `<div class="stat"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`).join("");
-      document.getElementById("analysis-policy").textContent = summary.analysis_label || "";
-      document.getElementById("phase-status").innerHTML = Object.entries(summary.phase_status || {}).map(([k, v]) => chip(`${k}: ${v}`, v === "complete" ? "var(--accent)" : "var(--warning)")).join("");
-      document.getElementById("questions").innerHTML = state.questions.map((q, i) => `<span class="chip" style="cursor:pointer" onclick="setCanonicalQuery(${i})">${escapeHtml(q)}</span>`).join("");
-
-      populateSelect("card-type", (summary.card_counts || []).map(x => x.card_type), true, "All card types");
-      populateSelect("card-threshold", summary.card_thresholds || [], true, "All thresholds");
-      populateSelect("card-method", summary.card_methods || [], true, "All methods");
-      populateSelect("card-relation", summary.card_relations || [], true, "All relation types");
-      populateSelect("link-relation", (summary.link_counts || []).map(x => x.relation_type), true, "All relations");
-      populateSelect("link-threshold", [...new Set((summary.combos || []).map(x => x.threshold))], false);
-      populateSelect("link-method", [...new Set((summary.combos || []).map(x => x.method))], false);
-      populateSelect("super-threshold", [...new Set((summary.combos || []).map(x => x.threshold))], false);
-      populateSelect("super-method", [...new Set((summary.combos || []).map(x => x.method))], false);
-      populateSelect("module-threshold", [...new Set((summary.combos || []).map(x => x.threshold))], false);
-      populateSelect("module-method", [...new Set((summary.combos || []).map(x => x.method))], false);
-      populateSelect("kg-site", state.kgSites || [], true, "All sites");
-      document.getElementById("module-kind").value = "vgae";
-
-      const reportSelect = document.getElementById("report-select");
-      reportSelect.innerHTML = (summary.reports || []).map(r => `<option value="${escapeHtml(r.name)}">${escapeHtml(r.name)}</option>`).join("");
-      if (summary.reports && summary.reports.length > 0) {
-        reportSelect.value = summary.reports[0].name;
-      }
-
-      document.getElementById("card-threshold").value = "";
-      document.getElementById("card-method").value = "";
-      document.getElementById("card-relation").value = "";
-      document.getElementById("link-threshold").value = summary.primary_threshold || PRIMARY_THRESHOLD;
-      document.getElementById("link-method").value = summary.primary_method || PRIMARY_METHOD;
-      document.getElementById("super-threshold").value = summary.primary_threshold || PRIMARY_THRESHOLD;
-      document.getElementById("super-method").value = summary.primary_method || PRIMARY_METHOD;
-      document.getElementById("module-threshold").value = summary.primary_threshold || PRIMARY_THRESHOLD;
-      document.getElementById("module-method").value = summary.primary_method || PRIMARY_METHOD;
-      document.getElementById("kg-site").value = "";
-      document.getElementById("kg-taxon").value = "";
-      document.getElementById("query-provider").value = state.llmProvider;
-
-      const loaders = [
-        safeLoad("Cards panel", loadCards),
-        safeLoad("Links panel", loadLinks),
-        safeLoad("Super graph panel", loadSuperGraph),
-        safeLoad("Modules panel", loadModules),
-        safeLoad("Knowledge graph panel", loadKG),
-        safeLoad("Embedding panel", loadEmbeddings),
-        safeLoad("Report panel", loadReport),
-      ];
-      await Promise.all(loaders);
-      setBrowserStatus("Panels loaded. Query example will run in the background.", "ok");
-      setTimeout(() => {
-        safeLoad("Example query", loadQueryExample);
-      }, 0);
-    }
-
-    async function loadCards() {
-      const q = document.getElementById("card-query").value || "";
-      const params = new URLSearchParams({
-        query: q,
-        card_type: document.getElementById("card-type").value || "",
-        threshold: document.getElementById("card-threshold").value || "",
-        method: document.getElementById("card-method").value || "",
-        relation_type: document.getElementById("card-relation").value || "",
-        limit: "80",
-      });
-      const data = await fetchJson(`/api/cards?${params.toString()}`);
-      document.getElementById("cards-table").innerHTML = tableHtml(data.rows);
-    }
-
-    async function loadLinks() {
-      const params = new URLSearchParams({
-        threshold: document.getElementById("link-threshold").value || PRIMARY_THRESHOLD,
-        method: document.getElementById("link-method").value || PRIMARY_METHOD,
-        relation_type: document.getElementById("link-relation").value || "",
-        focus: document.getElementById("link-focus").value || "",
-        limit: "80",
-      });
-      const data = await fetchJson(`/api/links?${params.toString()}`);
-      document.getElementById("links-table").innerHTML = tableHtml(data.rows);
-      document.getElementById("graph-box").innerHTML = data.graph_svg || "";
-    }
-
-    async function loadSuperGraph() {
-      const params = new URLSearchParams({
-        threshold: document.getElementById("super-threshold").value || PRIMARY_THRESHOLD,
-        method: document.getElementById("super-method").value || PRIMARY_METHOD,
-      });
-      const data = await fetchJson(`/api/supergraph?${params.toString()}`);
-      document.getElementById("supergraph-box").innerHTML = data.svg || "";
-      document.getElementById("supergraph-table").innerHTML = tableHtml(data.rows || []);
-    }
-
-    async function loadModules() {
-      const params = new URLSearchParams({
-        threshold: document.getElementById("module-threshold").value || PRIMARY_THRESHOLD,
-        method: document.getElementById("module-method").value || PRIMARY_METHOD,
-        kind: document.getElementById("module-kind").value || "vgae",
-        module_id: document.getElementById("module-id").value || "",
-        limit: "60",
-      });
-      const data = await fetchJson(`/api/modules?${params.toString()}`);
-      const options = (data.summary || []).map(row => `<option value="${escapeHtml(row.module_id)}">${escapeHtml(row.module_id)} (${escapeHtml(row.taxa)})</option>`).join("");
-      document.getElementById("module-id").innerHTML = options || "<option value=''>No modules</option>";
-      if (data.module_id) {
-        document.getElementById("module-id").value = data.module_id;
-      }
-      document.getElementById("module-box").innerHTML = data.svg || "";
-      document.getElementById("module-table").innerHTML = tableHtml(data.members || []);
-      document.getElementById("embedding-focus").value = data.focus_taxon || document.getElementById("embedding-focus").value;
-    }
-
-    async function loadKG() {
-      const params = new URLSearchParams({
-        site: document.getElementById("kg-site").value || "",
-        taxon: document.getElementById("kg-taxon").value || "",
-        limit: "60",
-      });
-      const data = await fetchJson(`/api/kg?${params.toString()}`);
-      const summaryRows = data.summary || [];
-      document.getElementById("kg-stats").innerHTML = summaryRows.length
-        ? summaryRows.map((row) => `<div class="stat"><div class="label">${escapeHtml(row.label)}</div><div class="value">${escapeHtml(row.value)}</div></div>`).join("")
-        : "";
-      document.getElementById("kg-box").innerHTML = data.svg || "";
-      document.getElementById("kg-summary-table").innerHTML = tableHtml(summaryRows);
-      document.getElementById("kg-nodes-table").innerHTML = tableHtml(data.nodes || []);
-      document.getElementById("kg-edges-table").innerHTML = tableHtml(data.edges || []);
-      document.getElementById("kg-measurements-table").innerHTML = tableHtml(data.measurements || []);
-    }
-
-    async function loadEmbeddings() {
-      const params = new URLSearchParams({
-        focus: document.getElementById("embedding-focus").value || "",
-      });
-      const data = await fetchJson(`/api/embedding?${params.toString()}`);
-      document.getElementById("embedding-box").innerHTML = data.svg || "";
-    }
-
-    async function runQuery() {
-      const query = document.getElementById("query-text").value.trim();
-      if (!query) return;
-      const provider = document.getElementById("query-provider").value || "local";
-      state.llmProvider = provider;
-      const params = new URLSearchParams({ query, llm_provider: provider });
-      document.getElementById("query-answer").textContent = "Running query...";
-      document.getElementById("query-debug").textContent = "Waiting for response...";
-      try {
-        const data = await fetchJson(`/api/query?${params.toString()}`);
-        renderLlmStatus(data);
-        document.getElementById("query-answer").textContent = data.markdown || "";
-        document.getElementById("query-table").innerHTML = tableHtml(data.semantic_hits || []);
-        document.getElementById("retrieval-table").innerHTML = tableHtml(data.retrieved_cards || []);
-        document.getElementById("query-prompt").textContent = data.retrieval_prompt || (data.retrieval_bundle && data.retrieval_bundle.prompt_preview) || "";
-        const debugLines = [
-          `provider: ${data.llm_provider || "local"}`,
-          `status: ${data.llm_status || ""}`,
-          `model: ${data.llm_model || ""}`,
-        ];
-        if (data.llm_answer) {
-          debugLines.push("");
-          debugLines.push("LLM answer:");
-          debugLines.push(String(data.llm_answer));
-        }
-        if (data.llm_raw_text) {
-          debugLines.push("");
-          debugLines.push("Raw LLM text:");
-          debugLines.push(String(data.llm_raw_text));
-        }
-        document.getElementById("query-debug").textContent = debugLines.join("\\n");
-        if (data.context_taxa && data.context_taxa.length > 0) {
-          document.getElementById("embedding-focus").value = data.context_taxa[0];
-        }
-      } catch (err) {
-        document.getElementById("query-answer").textContent = `Query failed: ${err.message}`;
-        document.getElementById("query-debug").textContent = `provider: ${provider}\\nerror: ${err.message}`;
-        handleBrowserError("Query", err);
-      }
-    }
-
-    async function loadQueryExample() {
-      if (!state.questions.length) return;
-      document.getElementById("query-text").value = state.questions[0];
-      await runQuery();
-    }
-
-    function setCanonicalQuery(index) {
-      if (!state.questions[index]) return;
-      document.getElementById("query-text").value = state.questions[index];
-      runQuery();
-    }
-
-    async function loadReport() {
-      const name = document.getElementById("report-select").value;
-      if (!name) {
-        document.getElementById("report-box").textContent = "No report selected.";
-        return;
-      }
-      const data = await fetchJson(`/api/report?name=${encodeURIComponent(name)}`);
-      document.getElementById("report-box").textContent = data.content || "";
-    }
-
-    async function loadGraph(kind) {
-      const params = new URLSearchParams({
-        kind,
-        threshold: document.getElementById("link-threshold").value || PRIMARY_THRESHOLD,
-        method: document.getElementById("link-method").value || PRIMARY_METHOD,
-        focus: document.getElementById("link-focus").value || "",
-      });
-      const data = await fetchJson(`/api/graph?${params.toString()}`);
-      document.getElementById("graph-box").innerHTML = data.svg || "";
-    }
-
-    bindEvent("module-kind", "change", loadModules);
-    bindEvent("module-id", "change", loadModules);
-    bindEvent("super-threshold", "change", loadSuperGraph);
-    bindEvent("super-method", "change", loadSuperGraph);
-    bindEvent("kg-site", "change", loadKG);
-    bindEvent("link-threshold", "change", loadLinks);
-    bindEvent("link-method", "change", loadLinks);
-    bindEvent("link-relation", "change", loadLinks);
-    bindEvent("card-type", "change", loadCards);
-    bindEvent("card-threshold", "change", loadCards);
-    bindEvent("card-method", "change", loadCards);
-    bindEvent("card-relation", "change", loadCards);
-    bindEvent("report-select", "change", loadReport);
-
-    window.addEventListener("error", (event) => {
-      handleBrowserError("Browser error", event.error || new Error(event.message || "Unknown browser error"));
-    });
-    window.addEventListener("unhandledrejection", (event) => {
-      handleBrowserError("Unhandled promise rejection", event.reason || new Error("Unknown promise rejection"));
-    });
-
-    init().catch(err => {
-      document.body.insertAdjacentHTML("afterbegin", `<div style="padding:16px;background:#7f1d1d;color:#fff">Browser failed to load: ${escapeHtml(err.message)}</div>`);
-      console.error(err);
-      setBrowserStatus(`Browser failed to load: ${err.message}`, "error");
-    });
-  </script>
-</body>
-</html>
-"""
-
-HTML_PAGE = HTML_PAGE.replace('const PRIMARY_THRESHOLD = "prev_5";', f'const PRIMARY_THRESHOLD = "{PRIMARY_THRESHOLD}";')
-HTML_PAGE = HTML_PAGE.replace('const PRIMARY_METHOD = "pearson";', f'const PRIMARY_METHOD = "{PRIMARY_METHOD}";')
-HTML_PAGE = HTML_PAGE.replace('value || "prev_5"', 'value || PRIMARY_THRESHOLD')
-HTML_PAGE = HTML_PAGE.replace('value || "pearson"', 'value || PRIMARY_METHOD')
-
-
-def render_kg_page(app: NGraphBrowser, page: str, params: Dict[str, List[str]]) -> str:
-    schema = app.kg_schema()
-    downloads = app.kg_downloads()
-    initial = {
-        "query": params.get("q", [""])[0],
-        "node_id": params.get("id", [""])[0],
-        "source": params.get("source", [""])[0],
-        "target": params.get("target", [""])[0],
-        "site": params.get("site", [""])[0],
-        "taxon": params.get("taxon", [""])[0],
-        "node_type": params.get("node_type", [""])[0],
-        "edge_type": params.get("edge_type", [""])[0],
-        "depth": safe_int(params.get("depth", ["1"])[0], 1),
-        "max_depth": safe_int(params.get("max_depth", ["4"])[0], 4),
-    }
-    page_data = json.dumps(
-        {
-            "branch": app.branch,
-            "primary_threshold": PRIMARY_THRESHOLD,
-            "primary_method": PRIMARY_METHOD,
-            "schema": schema,
-            "downloads": downloads,
-            "initial": initial,
-        },
-        default=normalize_value,
-    )
-
-    nav = {
-        "/kg": "Overview",
-        "/kg/search": "Search",
-        "/kg/explore": "Explore",
-        "/kg/paths": "Paths",
-        "/kg/node": "Node",
-        "/kg/downloads": "Downloads",
-    }
-    active_label = nav.get(page, "Overview")
-    nav_html = "".join(
-        f"<a class='{'active' if route == page else ''}' href='{route}'>{label}</a>"
-        for route, label in nav.items()
-    )
-
-    base_css = """
-    :root {
-      --bg: #f6f4ee;
-      --panel: #ffffff;
-      --panel-2: #f1ede5;
-      --line: #d8d0c2;
-      --text: #1d2320;
-      --muted: #5f6b64;
-      --accent: #2f6b4f;
-      --accent-2: #8b5e3c;
-      --accent-3: #4d7f63;
-      --danger: #b24b4b;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: linear-gradient(180deg, #fbfaf6 0%, #f6f4ee 48%, #ece6dc 100%); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    a { color: inherit; }
-    header { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(16px); background: linear-gradient(180deg, rgba(30, 70, 52, 0.97), rgba(43, 88, 67, 0.96)); border-bottom: 1px solid rgba(18, 44, 32, 0.28); padding: 16px 24px; color: #f8f6f1; box-shadow: 0 10px 26px rgba(18, 44, 32, 0.14); }
-    header a { color: #f8f6f1; }
-    header .muted { color: rgba(248, 246, 241, 0.78); }
-    header .title h1, header .title .sub { color: #f8f6f1; }
-    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-    .head h1 { margin: 0; font-size: 24px; letter-spacing: 0.01em; }
-    .head p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
-    .nav { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
-    .nav a { text-decoration: none; padding: 8px 12px; border-radius: 999px; border: 1px solid rgba(93, 79, 61, 0.16); background: #ffffff; color: var(--text); font-size: 13px; box-shadow: 0 1px 0 rgba(93, 79, 61, 0.04); }
-    .nav a.active { background: linear-gradient(135deg, rgba(47, 107, 79, 0.12), rgba(139, 94, 60, 0.12)); border-color: rgba(47, 107, 79, 0.3); }
-    main { max-width: 1600px; margin: 0 auto; padding: 22px 24px 40px; }
-    main.kg-main { max-width: none; width: 100%; margin: 0; padding: 22px 24px 40px; }
-    .hero { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 18px; margin-bottom: 18px; }
-    .card, .panel { background: var(--panel); border: 1px solid rgba(93, 79, 61, 0.14); border-radius: 18px; box-shadow: 0 16px 38px rgba(64, 51, 36, 0.08); }
-    .card { padding: 18px; }
-    .panel { padding: 16px; }
-    .title-2 { margin: 0 0 10px; font-size: 18px; }
-    .muted { color: var(--muted); }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-    .stat { padding: 14px; border-radius: 16px; border: 1px solid rgba(93, 79, 61, 0.14); background: #fffdf9; }
-    .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-    .stat .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
-    input, select, button, textarea { font: inherit; border-radius: 12px; border: 1px solid rgba(93, 79, 61, 0.18); background: #ffffff; color: var(--text); padding: 10px 12px; }
-    input, select, textarea { min-width: 180px; }
-    textarea { width: 100%; min-height: 100px; resize: vertical; }
-    button { cursor: pointer; background: linear-gradient(135deg, rgba(47, 107, 79, 0.96), rgba(139, 94, 60, 0.92)); color: #fffdf9; font-weight: 700; border: none; }
-    button.secondary { background: #f6f2ea; color: var(--text); border: 1px solid rgba(93, 79, 61, 0.18); }
-    .table-wrap { overflow: auto; border-radius: 14px; border: 1px solid rgba(93, 79, 61, 0.12); background: #fffdf9; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { padding: 9px 11px; border-bottom: 1px solid rgba(93, 79, 61, 0.08); vertical-align: top; }
-    th { position: sticky; top: 0; background: #f1ede5; text-align: left; white-space: nowrap; color: #2e2a25; }
-    tr:hover td { background: rgba(47, 107, 79, 0.05); }
-    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 10px; border: 1px solid rgba(93, 79, 61, 0.16); background: #f8f5ee; color: var(--text); font-size: 12px; }
-    .graph { min-height: 640px; border-radius: 16px; border: 1px solid rgba(93, 79, 61, 0.12); overflow: hidden; background: linear-gradient(180deg, #fffdf9, #f8f5ee); }
-    .graph.small { min-height: 420px; }
-    .kg-explore-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(520px, 0.95fr); gap: 20px; align-items: stretch; width: 100%; }
-    .kg-explore-main { min-width: 0; display: flex; flex-direction: column; }
-    .kg-explore-sidebar { min-width: 0; display: flex; flex-direction: column; gap: 14px; transition: width 180ms ease, min-width 180ms ease, opacity 180ms ease, transform 180ms ease; }
-    .kg-explore-graph { flex: 1; min-height: 72vh; height: clamp(680px, 74vh, 1120px); }
-    .kg-explore-sidebar .report { flex: 0 0 auto; min-height: 280px; max-height: none; }
-    .kg-explore-sidebar .panel { flex: 1; display: flex; flex-direction: column; }
-    .kg-explore-sidebar .table-wrap { flex: 1; min-height: 260px; max-height: none; overflow: auto; }
-    .kg-explore-sidebar.collapsed { min-width: 56px; width: 56px; opacity: 0.98; }
-    .kg-explore-sidebar.collapsed .kg-detail-content { display: none; }
-    .kg-explore-sidebar.collapsed .kg-detail-toggle { width: 100%; }
-    .kg-explore-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
-    .kg-explore-toggle-row .title-2 { margin: 0; }
-    .kg-detail-toggle { white-space: nowrap; }
-    .shell { display: grid; gap: 16px; }
-    .shell.two-col { grid-template-columns: 1.4fr 0.6fr; }
-    .shell.three-col { grid-template-columns: 1.1fr 0.65fr 0.65fr; }
-    .report { white-space: pre-wrap; overflow: auto; max-height: 520px; border-radius: 14px; padding: 14px; border: 1px solid rgba(93, 79, 61, 0.12); background: #fffdf9; color: var(--text); }
-    @media (max-width: 1100px) {
-      .hero, .grid-2, .shell.two-col, .shell.three-col, .kg-explore-layout { grid-template-columns: 1fr; }
-      .kg-explore-graph { min-height: 58vh; height: 58vh; }
-    }
-    """
-
-    if page == "/kg":
-        body = f"""
-        <section class='hero'>
-          <div class='card'>
-            <h2 class='title-2'>Knowledge Graph Overview</h2>
-            <p class='muted'>A browsable, file-backed KG surface for sites, samples, aeDNA taxa, modules, proxy data, and ontology-linked entities.</p>
-            <div class='chip-row' id='kg-overview-chips'></div>
-            <div class='grid-2' style='margin-top:16px;'>
-              <div class='panel'><h3 class='title-2'>Node types</h3><div class='table-wrap' id='kg-node-types'></div></div>
-              <div class='panel'><h3 class='title-2'>Edge predicates</h3><div class='table-wrap' id='kg-edge-types'></div></div>
-            </div>
-          </div>
-          <div class='card'>
-            <h2 class='title-2'>Quick Links</h2>
-            <div class='chip-row'>
-              <a class='chip' href='/kg/search'>Search</a>
-              <a class='chip' href='/kg/explore'>Explore</a>
-              <a class='chip' href='/kg/paths'>Paths</a>
-              <a class='chip' href='/kg/node'>Node</a>
-              <a class='chip' href='/kg/downloads'>Downloads</a>
-            </div>
-            <div style='margin-top:16px;' class='panel'>
-              <h3 class='title-2'>Metagraph</h3>
-              <div class='table-wrap' id='kg-metagraph'></div>
-            </div>
-          </div>
-        </section>
-        <section class='card'>
-          <h2 class='title-2'>Source Datasets</h2>
-          <div class='table-wrap' id='kg-datasets'></div>
-        </section>
-        """
-        script = """
-        async function initKgOverview() {
-          const schema = (window.__KG_PAGE__ && window.__KG_PAGE__.schema) || {};
-          const manifest = (schema.manifest || {});
-          const counts = [
-            ["Nodes", (manifest.counts && manifest.counts.nodes) || 0],
-            ["Edges", (manifest.counts && manifest.counts.edges) || 0],
-            ["Measurements", (manifest.counts && manifest.counts.measurements) || 0],
-            ["Sites", (manifest.counts && manifest.counts.site_nodes) || 0],
-          ];
-          document.getElementById("kg-overview-chips").innerHTML = counts.map(([k, v]) => `<span class="chip"><strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}</span>`).join("");
-          document.getElementById("kg-node-types").innerHTML = tableHtml(schema.node_types || []);
-          document.getElementById("kg-edge-types").innerHTML = tableHtml(schema.edge_types || []);
-          document.getElementById("kg-metagraph").innerHTML = tableHtml((schema.metagraph || []).slice(0, 200));
-          document.getElementById("kg-datasets").innerHTML = tableHtml(schema.datasets || []);
-        }
-        initKgOverview();
-        """
-    elif page == "/kg/search":
-        body = """
-        <section class='card'>
-          <h2 class='title-2'>Search</h2>
-          <div class='controls'>
-            <input id='kg-search-q' placeholder='Search nodes by label, id, taxon, site, variable...' />
-            <select id='kg-search-type'><option value=''>All types</option></select>
-            <input id='kg-search-limit' type='number' min='10' max='200' value='50' style='width:120px;' />
-            <button onclick='runKgSearch()'>Search</button>
-          </div>
-          <div class='grid-2'>
-            <div class='table-wrap' id='kg-search-table'></div>
-            <div class='panel'>
-              <h3 class='title-2'>Node Summary</h3>
-              <div class='report' id='kg-search-detail'>Run a search to inspect a node.</div>
-            </div>
-          </div>
-        </section>
-        """
-        script = """
-        function renderSearchRowLink(row) {
-          const id = row.node_id || "";
-          return `<a href='/kg/node?id=${encodeURIComponent(id)}'>${escapeHtml(id)}</a>`;
-        }
-        async function runKgSearch() {
-          const q = document.getElementById("kg-search-q").value || "";
-          const nodeType = document.getElementById("kg-search-type").value || "";
-          const limit = document.getElementById("kg-search-limit").value || "50";
-          const data = await fetchJson(`/api/kg/search?query=${encodeURIComponent(q)}&node_type=${encodeURIComponent(nodeType)}&limit=${encodeURIComponent(limit)}`);
-          const rows = (data.rows || []).map(row => ({
-            node_id: renderSearchRowLink(row),
-            node_type: row.node_type || "",
-            label: row.label || "",
-            search_score: row.search_score || "",
-            site_id: row.site_id || "",
-            taxon: row.taxon || "",
-            module_id: row.module_id || "",
-            variable: row.variable || "",
-          }));
-          document.getElementById("kg-search-table").innerHTML = tableHtml(rows);
-          if (data.rows && data.rows.length) {
-            await loadKgNode(data.rows[0].node_id);
-          }
-        }
-        async function loadKgNode(nodeId) {
-          const data = await fetchJson(`/api/kg/node?id=${encodeURIComponent(nodeId)}`);
-          const node = data.node || {};
-          const lines = [
-            `node_id: ${node.node_id || ""}`,
-            `node_type: ${node.node_type || ""}`,
-            `label: ${node.label || ""}`,
-            `site_id: ${node.site_id || ""}`,
-            `taxon: ${node.taxon || ""}`,
-            `module_id: ${node.module_id || ""}`,
-            `variable: ${node.variable || ""}`,
-            `source_table: ${node.source_table || ""}`,
-            `source_file: ${node.source_file || ""}`,
-          ];
-          document.getElementById("kg-search-detail").textContent = lines.join("\\n");
-        }
-        async function initKgSearch() {
-          const schema = (window.__KG_PAGE__ && window.__KG_PAGE__.schema) || {};
-          document.getElementById("kg-search-type").innerHTML = ["<option value=''>All types</option>", ...(schema.node_types || []).map(row => `<option value='${escapeHtml(row.node_type)}'>${escapeHtml(row.node_type)} (${escapeHtml(row.count)})</option>`)].join("");
-          const initial = (window.__KG_PAGE__ && window.__KG_PAGE__.initial) || {};
-          document.getElementById("kg-search-q").value = initial.query || "";
-          document.getElementById("kg-search-type").value = initial.node_type || "";
-          if (initial.query) {
-            await runKgSearch();
-          } else {
-            document.getElementById("kg-search-table").innerHTML = tableHtml([]);
-          }
-        }
-        initKgSearch();
-        """
-    elif page == "/kg/explore":
-        body = """
-        <section class='kg-explore-layout'>
-          <div class='card kg-explore-main'>
-            <h2 class='title-2'>Explore</h2>
-            <div class='controls'>
-              <input id='kg-focus' placeholder='Node id, site, or taxon' />
-              <select id='kg-depth'><option value='1'>1 hop</option><option value='2'>2 hops</option><option value='3'>3 hops</option></select>
-              <select id='kg-edge-type'><option value=''>All edges</option></select>
-              <select id='kg-node-type'><option value=''>All nodes</option></select>
-              <input id='kg-limit' type='number' min='20' max='300' value='150' style='width:120px;' />
-              <button onclick='loadKgExplore()'>Refresh</button>
-              <button class='secondary' onclick='focusSelectedNode()'>Inspect selected</button>
-            </div>
-            <div class='graph kg-explore-graph' id='kg-cy'></div>
-          </div>
-          <div class='card kg-explore-sidebar' id='kg-explore-sidebar'>
-            <div class='kg-explore-toggle-row'>
-              <h2 class='title-2'>Node Detail</h2>
-              <button class='secondary kg-detail-toggle' onclick='toggleKgSidebar()'>Collapse</button>
-            </div>
-            <div class='kg-detail-content'>
-              <div class='report' id='kg-node-detail'>Click a node to inspect it.</div>
-              <div class='panel' style='margin-top:14px;'>
-                <h3 class='title-2'>Selected neighborhood</h3>
-                <div class='table-wrap' id='kg-neighborhood-table'></div>
-              </div>
-            </div>
-          </div>
-        </section>
-        """
-        script = """
-        let kgCy = null;
-        let kgSelected = null;
-        let kgResizeObserver = null;
-        let kgSidebarCollapsed = false;
-        function cyStyles() {
-          return [
-            { selector: 'node', style: { 'label': 'data(label)', 'font-size': 10, 'text-wrap': 'wrap', 'text-max-width': 90, 'background-color': '#57b8ff', 'border-width': 1, 'border-color': '#e5e7eb', 'width': 18, 'height': 18 } },
-            { selector: 'node.site', style: { 'background-color': '#1d7ed6', 'shape': 'round-rectangle', 'width': 28, 'height': 28 } },
-            { selector: 'node.sample', style: { 'background-color': '#0ca678' } },
-            { selector: 'node.taxon', style: { 'background-color': '#2b8a3e' } },
-            { selector: 'node.module', style: { 'background-color': '#f08c00', 'shape': 'diamond', 'width': 24, 'height': 24 } },
-            { selector: 'node.proxymasurement', style: { 'background-color': '#f59f00' } },
-            { selector: 'node.proxymeasurement', style: { 'background-color': '#f59f00' } },
-            { selector: 'node.proxyvariable', style: { 'background-color': '#20c997' } },
-            { selector: 'node.dataset', style: { 'background-color': '#adb5bd' } },
-            { selector: 'node.analysisrun', style: { 'background-color': '#e8590c' } },
-            { selector: 'node.ontologyterm', style: { 'background-color': '#868e96' } },
-            { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#f7b955' } },
-            { selector: 'edge', style: { 'curve-style': 'bezier', 'line-color': '#9db0c8', 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9db0c8', 'opacity': 0.65, 'width': 1.5 } },
-            { selector: 'edge.site_has_sample', style: { 'line-color': '#57b8ff' } },
-            { selector: 'edge.sample_observed_taxon', style: { 'line-color': '#49d17a' } },
-            { selector: 'edge.sample_has_measurement', style: { 'line-color': '#f7b955' } },
-            { selector: 'edge.taxon_member_of_module', style: { 'line-color': '#f08c00', 'target-arrow-color': '#f08c00' } },
-            { selector: 'edge.measurement_of_variable', style: { 'line-color': '#20c997' } },
-            { selector: 'edge.measurement_derived_from_dataset', style: { 'line-color': '#adb5bd' } },
-            { selector: 'edge.entity_has_ontology_term', style: { 'line-color': '#868e96' } },
-            { selector: '.path-edge', style: { 'line-color': '#f7b955', 'width': 3.5, 'opacity': 1 } },
-          ];
-        }
-        async function renderKgNodeDetail(nodeId) {
-          const data = await fetchJson(`/api/kg/node?id=${encodeURIComponent(nodeId)}`);
-          const node = data.node || {};
-          const detailLines = [
-            `node_id: ${node.node_id || ""}`,
-            `node_type: ${node.node_type || ""}`,
-            `label: ${node.label || ""}`,
-            `site_id: ${node.site_id || ""}`,
-            `taxon: ${node.taxon || ""}`,
-            `module_id: ${node.module_id || ""}`,
-            `variable: ${node.variable || ""}`,
-            `source_table: ${node.source_table || ""}`,
-            `source_file: ${node.source_file || ""}`,
-          ];
-          document.getElementById("kg-node-detail").textContent = detailLines.join("\\n");
-          document.getElementById("kg-neighborhood-table").innerHTML = tableHtml((data.incident_edges || []).slice(0, 80));
-        }
-        async function loadKgExplore() {
-          const focus = document.getElementById("kg-focus").value || "";
-          const depth = document.getElementById("kg-depth").value || "1";
-          const edgeType = document.getElementById("kg-edge-type").value || "";
-          const nodeType = document.getElementById("kg-node-type").value || "";
-          const limit = document.getElementById("kg-limit").value || "150";
-          const data = await fetchJson(`/api/kg/neighborhood?id=${encodeURIComponent(focus)}&depth=${encodeURIComponent(depth)}&edge_type=${encodeURIComponent(edgeType)}&node_type=${encodeURIComponent(nodeType)}&limit=${encodeURIComponent(limit)}`);
-          const elements = (data.elements || {nodes: [], edges: []});
-          if (kgCy) {
-            kgCy.destroy();
-          }
-          kgCy = cytoscape({
-            container: document.getElementById("kg-cy"),
-            elements: [...(elements.nodes || []), ...(elements.edges || [])],
-            style: cyStyles(),
-            layout: { name: 'cose', animate: false, fit: true, padding: 24 },
-            minZoom: 0.2,
-            maxZoom: 3
-          });
-          const kgContainer = document.getElementById("kg-cy");
-          if (kgResizeObserver) {
-            kgResizeObserver.disconnect();
-          }
-          if ("ResizeObserver" in window && kgContainer) {
-            kgResizeObserver = new ResizeObserver(() => {
-              if (kgCy) {
-                kgCy.resize();
-                kgCy.fit(undefined, 24);
-              }
-            });
-            kgResizeObserver.observe(kgContainer);
-            if (kgContainer.parentElement) {
-              kgResizeObserver.observe(kgContainer.parentElement);
-            }
-          } else if (kgCy) {
-            window.requestAnimationFrame(() => {
-              kgCy.resize();
-              kgCy.fit(undefined, 24);
-            });
-          }
-          kgCy.on('tap', 'node', async function(evt) {
-            const id = evt.target.id();
-            kgSelected = id;
-            await renderKgNodeDetail(id);
-          });
-          if ((elements.nodes || []).length > 0) {
-            const first = elements.nodes[0].data.id;
-            kgSelected = first;
-            await renderKgNodeDetail(first);
-          }
-          document.getElementById("kg-neighborhood-table").innerHTML = tableHtml(data.nodes || []);
-        }
-        function focusSelectedNode() {
-          if (!kgSelected) return;
-          document.getElementById("kg-focus").value = kgSelected;
-          loadKgExplore();
-        }
-        function toggleKgSidebar() {
-          kgSidebarCollapsed = !kgSidebarCollapsed;
-          const sidebar = document.getElementById("kg-explore-sidebar");
-          const button = document.querySelector(".kg-detail-toggle");
-          if (sidebar) {
-            sidebar.classList.toggle("collapsed", kgSidebarCollapsed);
-          }
-          if (button) {
-            button.textContent = kgSidebarCollapsed ? "Expand" : "Collapse";
-          }
-          window.requestAnimationFrame(() => {
-            if (kgCy) {
-              kgCy.resize();
-              kgCy.fit(undefined, 24);
-            }
-          });
-        }
-        async function initKgExplore() {
-          const schema = (window.__KG_PAGE__ && window.__KG_PAGE__.schema) || {};
-          document.getElementById("kg-edge-type").innerHTML = ["<option value=''>All edges</option>", ...(schema.edge_types || []).map(row => `<option value='${escapeHtml(row.edge_type)}'>${escapeHtml(row.edge_type)} (${escapeHtml(row.count)})</option>`)].join("");
-          document.getElementById("kg-node-type").innerHTML = ["<option value=''>All nodes</option>", ...(schema.node_types || []).map(row => `<option value='${escapeHtml(row.node_type)}'>${escapeHtml(row.node_type)} (${escapeHtml(row.count)})</option>`)].join("");
-          const initial = (window.__KG_PAGE__ && window.__KG_PAGE__.initial) || {};
-          document.getElementById("kg-focus").value = initial.node_id || initial.site || initial.taxon || "";
-          document.getElementById("kg-depth").value = String(initial.depth || 1);
-          if (initial.edge_type) document.getElementById("kg-edge-type").value = initial.edge_type;
-          if (initial.node_type) document.getElementById("kg-node-type").value = initial.node_type;
-          await loadKgExplore();
-        }
-        window.addEventListener('resize', () => {
-          if (kgCy) {
-            kgCy.resize();
-            kgCy.fit(undefined, 24);
-          }
-        });
-        initKgExplore();
-        """
-    elif page == "/kg/paths":
-        body = """
-        <section class='card'>
-          <h2 class='title-2'>Typed connectivity search</h2>
-          <p>Counts and degree-weighted scores describe connectivity. Open the evidence below to inspect source records. Module membership is exploratory.</p>
-          <div class='controls'>
-            <select id='kg-metapath'><option value='site_taxon'>Site → sample → taxon</option><option value='taxon_proxy'>Taxon ← sample → measurement → proxy</option><option value='site_module_bridge'>Core sites linked through taxa and a module</option><option value='shared_module'>Taxon → module ← taxon</option></select>
-            <button onclick='loadKgConnectivity()'>Search typed connections</button>
-          </div>
-          <div class='controls'><button onclick='loadKgDemo(0)'>Demo: taxon and SST evidence</button><button onclick='loadKgDemo(1)'>Demo: cores linked through modules</button></div>
-          <div id='kg-connectivity-summary'></div>
-          <pre id='kg-connectivity-evidence' style='max-height:400px;overflow:auto;white-space:pre-wrap;'></pre>
-          <h3 class='title-2'>Shortest path explorer</h3>
-          <div class='controls'>
-            <input id='kg-path-source' placeholder='Source node id' />
-            <input id='kg-path-target' placeholder='Target node id' />
-            <select id='kg-path-edge-type'><option value=''>All edges</option></select>
-            <input id='kg-path-depth' type='number' min='1' max='8' value='4' style='width:120px;' />
-            <button onclick='loadKgPath()'>Find path</button>
-          </div>
-          <div class='shell two-col'>
-            <div class='graph' id='kg-path-cy'></div>
-            <div class='panel'>
-              <h3 class='title-2'>Path summary</h3>
-              <div class='chip-row' id='kg-path-summary'></div>
-              <div class='table-wrap' id='kg-path-table' style='margin-top:12px;'></div>
-            </div>
-          </div>
-        </section>
-        """
-        script = """
-        let kgPathCy = null;
-        async function loadKgDemo(index) {
-          const data = await fetchJson('/api/kg/demo');
-          const q = (data.questions || [])[index];
-          if (!q) return;
-          document.getElementById("kg-path-source").value = q.source;
-          document.getElementById("kg-path-target").value = q.target;
-          document.getElementById("kg-metapath").value = q.metapath;
-          await loadKgConnectivity();
-        }
-        async function loadKgConnectivity() {
-          const source = document.getElementById("kg-path-source").value;
-          const target = document.getElementById("kg-path-target").value;
-          const metapath = document.getElementById("kg-metapath").value;
-          const data = await fetchJson(`/api/kg/connectivity?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}&metapath=${encodeURIComponent(metapath)}`);
-          document.getElementById("kg-connectivity-summary").textContent = data.status === "missing" ? "Choose existing source and target node IDs or labels." : `Paths: ${data.path_count}; DWPC: ${data.dwpc}; count status: ${data.count_status}; evidence paths shown: ${(data.paths || []).length}`;
-          document.getElementById("kg-connectivity-evidence").textContent = JSON.stringify(data.paths || [], null, 2);
-        }
-        async function loadKgPath() {
-          const source = document.getElementById("kg-path-source").value || "";
-          const target = document.getElementById("kg-path-target").value || "";
-          const edgeType = document.getElementById("kg-path-edge-type").value || "";
-          const maxDepth = document.getElementById("kg-path-depth").value || "4";
-          const data = await fetchJson(`/api/kg/paths?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}&edge_type=${encodeURIComponent(edgeType)}&max_depth=${encodeURIComponent(maxDepth)}`);
-          document.getElementById("kg-path-summary").innerHTML = (data.summary || []).map(row => `<span class="chip"><strong>${escapeHtml(row.label)}:</strong> ${escapeHtml(row.value)}</span>`).join("");
-          document.getElementById("kg-path-table").innerHTML = tableHtml(data.edges || []);
-          const elements = data.elements || {nodes: [], edges: []};
-          if (kgPathCy) kgPathCy.destroy();
-          kgPathCy = cytoscape({
-            container: document.getElementById("kg-path-cy"),
-            elements: [...(elements.nodes || []), ...(elements.edges || [])],
-            style: cyStyles().concat([{ selector: '.path-edge', style: { 'line-color': '#f7b955', 'width': 4, 'opacity': 1 } }]),
-            layout: { name: 'breadthfirst', directed: false, fit: true, padding: 30 },
-          });
-        }
-        async function initKgPaths() {
-          const schema = (window.__KG_PAGE__ && window.__KG_PAGE__.schema) || {};
-          document.getElementById("kg-path-edge-type").innerHTML = ["<option value=''>All edges</option>", ...(schema.edge_types || []).map(row => `<option value='${escapeHtml(row.edge_type)}'>${escapeHtml(row.edge_type)} (${escapeHtml(row.count)})</option>`)].join("");
-          const initial = (window.__KG_PAGE__ && window.__KG_PAGE__.initial) || {};
-          document.getElementById("kg-path-source").value = initial.source || "";
-          document.getElementById("kg-path-target").value = initial.target || "";
-          if (initial.edge_type) document.getElementById("kg-path-edge-type").value = initial.edge_type;
-          document.getElementById("kg-path-depth").value = String(initial.max_depth || 4);
-          if (initial.source && initial.target) {
-            await loadKgPath();
-          }
-        }
-        initKgPaths();
-        """
-    elif page == "/kg/node":
-        body = """
-        <section class='card'>
-          <h2 class='title-2'>Node Detail</h2>
-          <div class='controls'>
-            <input id='kg-node-id' placeholder='Node id' />
-            <button onclick='loadKgNodePage()'>Load node</button>
-            <a class='chip' href='/kg/explore'>Open explore</a>
-          </div>
-          <div class='shell two-col'>
-            <div>
-              <div class='panel'><h3 class='title-2'>Node</h3><div class='report' id='kg-node-info'>Select a node.</div></div>
-              <div class='panel' style='margin-top:14px;'><h3 class='title-2'>Incident edges</h3><div class='table-wrap' id='kg-node-edges'></div></div>
-            </div>
-            <div>
-              <div class='panel'><h3 class='title-2'>Measurements</h3><div class='table-wrap' id='kg-node-measurements'></div></div>
-              <div class='panel' style='margin-top:14px;'><h3 class='title-2'>Neighbors</h3><div class='table-wrap' id='kg-node-neighbors'></div></div>
-            </div>
-          </div>
-        </section>
-        """
-        script = """
-        async function loadKgNodePage() {
-          const id = document.getElementById("kg-node-id").value || "";
-          const data = await fetchJson(`/api/kg/node?id=${encodeURIComponent(id)}`);
-          const node = data.node || {};
-          document.getElementById("kg-node-info").textContent = [
-            `node_id: ${node.node_id || ""}`,
-            `node_type: ${node.node_type || ""}`,
-            `label: ${node.label || ""}`,
-            `site_id: ${node.site_id || ""}`,
-            `core: ${node.core || ""}`,
-            `taxon: ${node.taxon || ""}`,
-            `module_id: ${node.module_id || ""}`,
-            `variable: ${node.variable || ""}`,
-            `source_table: ${node.source_table || ""}`,
-            `source_file: ${node.source_file || ""}`,
-          ].join("\\n");
-          document.getElementById("kg-node-edges").innerHTML = tableHtml(data.incident_edges || []);
-          document.getElementById("kg-node-measurements").innerHTML = tableHtml(data.measurements || []);
-          document.getElementById("kg-node-neighbors").innerHTML = tableHtml(data.neighbors || []);
-        }
-        async function initKgNode() {
-          const initial = (window.__KG_PAGE__ && window.__KG_PAGE__.initial) || {};
-          document.getElementById("kg-node-id").value = initial.node_id || "";
-          if (initial.node_id) {
-            await loadKgNodePage();
-          }
-        }
-        initKgNode();
-        """
-    else:
-        body = """
-        <section class='grid-2'>
-          <div class='card'>
-            <h2 class='title-2'>Downloads</h2>
-            <div class='table-wrap' id='kg-download-table'></div>
-          </div>
-          <div class='card'>
-            <h2 class='title-2'>Manifest</h2>
-            <div class='report' id='kg-manifest'></div>
-          </div>
-        </section>
-        """
-        script = """
-        async function initKgDownloads() {
-          const downloads = (window.__KG_PAGE__ && window.__KG_PAGE__.downloads) || {};
-          document.getElementById("kg-download-table").innerHTML = tableHtml((downloads.files || []).map(row => ({
-            name: `<a href='/kg/file?name=${encodeURIComponent(row.name)}'>${escapeHtml(row.name)}</a>`,
-            exists: row.exists,
-            size: row.size,
-          })));
-          document.getElementById("kg-manifest").textContent = JSON.stringify(downloads.manifest || {}, null, 2);
-        }
-        initKgDownloads();
-        """
-
-    template = """
-    <!doctype html>
-    <html lang="en">
-    <head>
-      <meta charset="utf-8"/>
-      <meta name="viewport" content="width=device-width, initial-scale=1"/>
-      <title>__TITLE__</title>
-      <script src="/assets/vendor/cytoscape.min.js"></script>
-      <style>__CSS__</style>
-    </head>
-    <body>
-      <script>window.__KG_PAGE__ = __PAGE_DATA__;</script>
-      <header>
-        <div class="head">
-          <div>
-            <h1>__TITLE__</h1>
-            <p><strong>__ANALYSIS_LABEL__</strong></p>
-            <p>Branch: __BRANCH__ | Threshold: __THRESHOLD__ | Method: __METHOD__ | __ACTIVE__</p>
-          </div>
-          <div class="chip-row">
-            <a class="chip" href="/">NGraph Home</a>
-            <a class="chip" href="/kg/downloads">KG Files</a>
-          </div>
-        </div>
-        <div class="nav">__NAV__</div>
-      </header>
-      <main class="kg-main">
-        __BODY__
-      </main>
-      <script>
-      const PAGE = window.__KG_PAGE__ || {};
-      function escapeHtml(text) {
-        return String(text == null ? "" : text).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
-      }
-      function tableHtml(rows) {
-        if (!rows || !rows.length) return '<div class="muted" style="padding:12px;">No rows.</div>';
-        const cols = Object.keys(rows[0]);
-        const head = cols.map(c => `<th>${escapeHtml(c)}</th>`).join("");
-        const body = rows.map(r => `<tr>${cols.map(c => `<td>${r[c] == null ? "" : r[c]}</td>`).join("")}</tr>`).join("");
-        return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
-      }
-      async function fetchJson(url) {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        return await res.json();
-      }
-      __SCRIPT__
-      </script>
-    </body>
-    </html>
-    """
-    html_text = template.replace("__TITLE__", html.escape(active_label + " | NGraph KG"))
-    html_text = html_text.replace("__CSS__", base_css)
-    html_text = html_text.replace("__PAGE_DATA__", page_data)
-    html_text = html_text.replace("__ANALYSIS_LABEL__", html.escape(app.analysis_label()))
-    html_text = html_text.replace("__BRANCH__", html.escape(app.branch))
-    html_text = html_text.replace("__THRESHOLD__", html.escape(PRIMARY_THRESHOLD))
-    html_text = html_text.replace("__METHOD__", html.escape(PRIMARY_METHOD))
-    html_text = html_text.replace("__ACTIVE__", html.escape(active_label))
-    html_text = html_text.replace("__NAV__", nav_html)
-    html_text = html_text.replace("__BODY__", body)
-    html_text = html_text.replace("__SCRIPT__", script)
-    return html_text
-
-
-class BrowserHandler(BaseHTTPRequestHandler):
-    app: NGraphBrowser
+class ConstellationsHandler(BaseHTTPRequestHandler):
+    app: ConstellationsService
 
     def log_message(self, format: str, *args: Any) -> None:
         self.server.app.logger.info("%s - %s", self.client_address[0], format % args)
@@ -2959,11 +1489,42 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_file(self, path: Path, *, download: bool = False) -> None:
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        if download:
+            self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
+        self.end_headers()
+        with path.open("rb") as handle:
+            shutil.copyfileobj(handle, self.wfile)
+
+    def refresh_app_if_changed(self) -> ConstellationsService:
+        app = self.server.app
+        if app.artifact_signature() == self.server.artifact_signature:
+            return app
+        with self.server.refresh_lock:
+            app = self.server.app
+            if app.artifact_signature() != self.server.artifact_signature:
+                try:
+                    fresh = ConstellationsService(app.branch)
+                except (OSError, ValueError, KeyError) as exc:
+                    app.logger.warning("Keeping previous Constellations snapshot while artifacts change: %s", exc)
+                    return app
+                fresh.logger = app.logger
+                self.server.app = fresh
+                self.server.artifact_signature = fresh.artifact_signature()
+                app.logger.info("Reloaded Constellations artifacts for branch %s", app.branch)
+                app = fresh
+        return app
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
-        app = self.server.app
+        app = self.refresh_app_if_changed()
 
         try:
             if path.startswith("/assets/"):
@@ -3007,10 +1568,39 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 self.send_text(file_path.read_text(encoding="utf-8"), content_type=content_type)
                 return
             if path in {"/kg", "/kg/search", "/kg/explore", "/kg/paths", "/kg/node", "/kg/downloads"}:
-                self.send_text(render_kg_page(app, path, params), content_type="text/html; charset=utf-8")
+                destination = {
+                    "/kg": "/knowledge-graph", "/kg/search": "/knowledge-graph?view=browser",
+                    "/kg/explore": "/knowledge-graph?view=browser", "/kg/paths": "/knowledge-graph?view=metapaths",
+                    "/kg/node": "/knowledge-graph?view=browser", "/kg/downloads": "/data",
+                }[path]
+                if parsed.query:
+                    destination += ("&" if "?" in destination else "?") + parsed.query
+                self.send_response(302)
+                self.send_header("Location", destination)
+                self.end_headers()
                 return
-            if path == "/":
-                self.send_text(HTML_PAGE, content_type="text/html; charset=utf-8")
+            if path in {"/", "/overview", "/knowledge-graph", "/query", "/modules", "/data"}:
+                self.send_text((PROJECT_ROOT / "web_assets" / "constellations" / "index.html").read_text(encoding="utf-8"), content_type="text/html; charset=utf-8")
+                return
+            if path == "/api/overview":
+                self.send_json(build_overview(app, PRIMARY_THRESHOLD, PRIMARY_METHOD))
+                return
+            if path == "/api/data/catalog":
+                self.send_json({"branch": app.branch, "files": build_catalog(app, PROJECT_ROOT)})
+                return
+            if path == "/api/data/file":
+                requested = params.get("id", [""])[0]
+                allowed = {row["id"] for row in build_catalog(app, PROJECT_ROOT)}
+                if requested not in allowed:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                file_path = (PROJECT_ROOT / requested).resolve()
+                if not file_path.is_file() or PROJECT_ROOT.resolve() not in file_path.parents:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                self.send_file(file_path, download=file_path.suffix.lower() not in {".png", ".svg"})
                 return
             if path == "/api/summary":
                 self.send_json(app.summary())
@@ -3174,24 +1764,26 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "abundance_thresholding"))
+    parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "mvp_permissive_mixed_20261005"))
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
 
     logger = setup_logger(PROJECT_ROOT / "logs" / os.environ.get("NG_LOG_SCOPE", "") / "14_ngraph_local_browser.log")
-    logger.info("Starting local browser")
+    logger.info("Starting Constellations")
     logger.info("Seed: %d", SEED)
     logger.info("Host: %s Port: %d", args.host, args.port)
 
-    app = NGraphBrowser(args.branch)
+    app = ConstellationsService(args.branch)
     app.logger = logger
-    handler = BrowserHandler
+    handler = ConstellationsHandler
     handler.app = app
     server = ThreadingHTTPServer((args.host, args.port), handler)
     server.app = app  # type: ignore[attr-defined]
+    server.artifact_signature = app.artifact_signature()  # type: ignore[attr-defined]
+    server.refresh_lock = threading.Lock()  # type: ignore[attr-defined]
 
-    logger.info("Browser ready: http://%s:%d", args.host, args.port)
+    logger.info("Constellations ready: http://%s:%d", args.host, args.port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

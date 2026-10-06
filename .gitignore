@@ -15,3 +15,4 @@ __pycache__/
 *.py[cod]
 logs/mvp_*/
 logs/kg_substrate_*/
+logs/constellations_*/
