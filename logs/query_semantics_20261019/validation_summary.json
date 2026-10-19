@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-19",
+  "status": "passed",
+  "port": 10291,
+  "python": "3.14.5",
+  "seed": 42,
+  "unit_tests": 121,
+  "browser_checks": 11,
+  "browser_reports": [
+    "live_browser/acceptance.json",
+    "live_general_browser/console_acceptance.json"
+  ],
+  "final_live_replay": "final_live_replay.json",
+  "kg_snapshot": "functional-587688fa942779a82370eb1f",
+  "mis_matching_rows": 548,
+  "mis_compared_rows": 548,
+  "mis_unassessed_rows": 58,
+  "source_code_sha256": {
+    "scripts/ngraph_functional_query.py": "5cbd2796713347b39987ecc81fe844f1d18fb8e2b9661b0e25424cb3fab10ae8",
+    "scripts/ngraph_climate_context.py": "eeaed74c08d82b8637b11903c87deebb19242e426aad6a60924d0cdd734fd0ca",
+    "scripts/ngraph_rag_orchestrator.py": "d79bb2cb5778d6f85561554494eadda2f99eb7ee9f98c3a0f4f7ae91a5526b09",
+    "scripts/ngraph_llm_adapter.py": "accfa1962981ce85f2f92077959fb968898fe206ccd760a22e2a9249702bee5d",
+    "scripts/13_ngraph_query_engine.py": "2d7c30c8c0316cf06c486b21759d16fe471dfe9baf74639ac66f1188116c6fc2",
+    "scripts/14_ngraph_local_browser.py": "a094d1de59d0565d6282db580920d6844e94e06f2981c655b188e39ad3bca5cb",
+    "web_assets/constellations/app.js": "a005fe4e38ab020b0b3566b399f4b5fbed55f46eb4cbf60cfafbce9c82127566",
+    "data/reference/metadata_semantics_20261019.json": "b645875bee82043fef7aa338715e700fe4d55e2800cdf10bed1a955942bd5554"
+  },
+  "limitations": [
+    "Programmatic checks constrain citations, scope, typed associations, reported statistics and selected unsupported interpretations; they are not unrestricted semantic entailment.",
+    "No MIS-stage assignments or climate-function association tests have been computed.",
+    "DiffPool enrichment remains unavailable; frozen VGAE enrichment is unchanged."
+  ]
+}

@@ -1,0 +1,19 @@
+/* End-to-end regression for the user's climate → M24 → enrichment dialogue. */
+const puppeteer=require(process.env.NG_PUPPETEER_PATH||'puppeteer-core');
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const base=process.env.NG_BROWSER_URL||'http://127.0.0.1:10293',out=process.argv[2]||'/tmp/ngraph-query-semantics';fs.mkdirSync(out,{recursive:true});
+(async()=>{const browser=await puppeteer.launch({executablePath:process.env.NG_CHROMIUM_PATH,headless:true,timeout:120000,args:['--no-sandbox','--disable-gpu']});
+try{const p=await browser.newPage();await p.setViewport({width:1600,height:1100});p.setDefaultTimeout(85000);const errors=[],checks=[],responses=[];p.on('pageerror',e=>errors.push(e.message));
+await p.goto(base+'/query',{waitUntil:'networkidle0'});await p.click('#query-clear');await p.select('#query-provider','gemini');
+async function ask(query){await p.$eval('#query-input',(e,q)=>e.value=q,query);const pending=p.waitForResponse(r=>new URL(r.url()).pathname==='/api/query'&&r.request().method()==='POST');await p.evaluate(()=>document.getElementById('query-submit').click());const d=await(await pending).json();responses.push(d);await p.waitForFunction(()=>!document.getElementById('query-submit').disabled);const turn=await p.evaluate(()=>readConversation().at(-1));assert.equal(turn.question,query);return {d,turn};}
+let r=await ask('What taxa work together to transition from glacial to interglacial periods?');assert.equal(r.d.llm_status,'analysis_unavailable');assert.match(r.turn.answer,/not a Marine Isotope Stage number/);assert(!r.turn.answer.includes('0.993'));assert.equal(r.d.metadata_semantics.matching_rows,548);checks.push('transition query reports verified proxy semantics and missing analysis, not cooperation');
+r=await ask('what are the key functional enrichments in M24');assert.equal(r.d.resolution_status,'unannotated');assert.equal(r.turn.context.scope.module_system,'diffpool');assert.match(r.turn.answer,/exists/);assert(!r.turn.answer.includes('q='));checks.push('M24 resolves to DiffPool with explicit unavailable annotation');
+r=await ask('What are the key functional enrichments in module 24');assert.deepEqual(r.turn.context.entities.modules,['M24']);assert.equal(r.turn.context.scope.module_system,'diffpool');checks.push('module 24 alias keeps identity and module system');
+r=await ask('What about its enrichment scores?');assert.equal(r.d.llm_status,'annotation_unavailable');assert.deepEqual(r.turn.context.entities.modules,['M24']);checks.push('follow-up preserves unannotated module context');
+await p.screenshot({path:out+'/reported-conversation.png',fullPage:true});
+r=await ask('What are the key functional enrichments in VGAE module 3?');assert.equal(r.d.resolution_status,'resolved');assert.equal(r.turn.context.scope.module_system,'vgae');assert.equal(r.d.llm_status,'validated');assert.match(r.turn.answer,/M00091/);checks.push('explicit switch returns real VGAE enrichment with live Gemini typed validation');
+assert.match(await p.$eval('#query-evidence',e=>e.innerText),/VGAE · prev_10 · pearson/);checks.push('evidence panel displays selected analysis scope');
+r=await ask('What does MIS mean in our metadata?');assert.equal(r.d.metadata_semantics.status,'verified_lr04_interpolation');assert.equal(r.d.metadata_semantics.is_local_measurement,false);assert(await p.$('#query-evidence a[href*="PANGAEA.701576"]'));checks.push('metadata definition exposes source evidence and reference');
+await p.screenshot({path:out+'/mis-semantics.png',fullPage:true});
+assert.deepEqual(errors,[]);fs.writeFileSync(out+'/responses.json',JSON.stringify(responses,null,2));const report={status:'passed',base,checks,errors};fs.writeFileSync(out+'/acceptance.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

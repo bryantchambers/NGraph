@@ -1,6 +1,62 @@
 {
-  "schema_version": "mvp-1",
+  "schema_version": "mvp-3",
   "relations": {
+    "module_has_functional_association": {
+      "source": [
+        "Module"
+      ],
+      "target": [
+        "ModuleFunctionalAssociation"
+      ]
+    },
+    "association_with_function": {
+      "source": [
+        "ModuleFunctionalAssociation"
+      ],
+      "target": [
+        "FunctionalFeature"
+      ]
+    },
+    "association_derived_from_analysis": {
+      "source": [
+        "ModuleFunctionalAssociation"
+      ],
+      "target": [
+        "AnalysisRun"
+      ]
+    },
+    "taxon_has_reference_annotation": {
+      "source": [
+        "Taxon"
+      ],
+      "target": [
+        "ReferenceFunctionalAnnotation"
+      ]
+    },
+    "annotation_supports_function": {
+      "source": [
+        "ReferenceFunctionalAnnotation"
+      ],
+      "target": [
+        "FunctionalFeature"
+      ]
+    },
+    "association_supported_by_annotation": {
+      "source": [
+        "ModuleFunctionalAssociation"
+      ],
+      "target": [
+        "ReferenceFunctionalAnnotation"
+      ]
+    },
+    "annotation_derived_from_dataset": {
+      "source": [
+        "ReferenceFunctionalAnnotation"
+      ],
+      "target": [
+        "Dataset"
+      ]
+    },
     "site_has_sample": {
       "source": [
         "Site"
@@ -83,6 +139,62 @@
       "target": [
         "OntologyTerm"
       ]
+    },
+    "functional_feature_has_concept": {
+      "source": [
+        "FunctionalFeature"
+      ],
+      "target": [
+        "FunctionalConcept"
+      ]
+    },
+    "annotation_from_reference": {
+      "source": [
+        "ReferenceFunctionalAnnotation"
+      ],
+      "target": [
+        "ReferenceGenome"
+      ]
+    },
+    "functional_definition_mentions_ko": {
+      "source": [
+        "FunctionalFeature"
+      ],
+      "target": [
+        "FunctionalConcept"
+      ]
+    },
+    "annotation_records_ko": {
+      "source": [
+        "ReferenceFunctionalAnnotation"
+      ],
+      "target": [
+        "FunctionalConcept"
+      ]
+    },
+    "functional_definition_has_recorded_category": {
+      "source": [
+        "FunctionalFeature"
+      ],
+      "target": [
+        "FunctionalCategory"
+      ]
+    },
+    "functional_feature_has_reviewed_mapping": {
+      "source": [
+        "FunctionalFeature"
+      ],
+      "target": [
+        "FunctionalSemanticMapping"
+      ]
+    },
+    "functional_mapping_targets_term": {
+      "source": [
+        "FunctionalSemanticMapping"
+      ],
+      "target": [
+        "OntologyTerm"
+      ]
     }
   },
   "policies": {
@@ -90,6 +202,9 @@
     "taxon_evidence": "Read support does not establish positive TAD abundance",
     "modules": "Exploratory assignments scoped by branch, threshold, method and model",
     "ontology_edges": "Namespace placeholders; not curated ontology term grounding",
-    "proxy_matching": "Physical core + depth; GeoB R1/R2 aliases; 0.5 cm within-level match, then bracketed linear interpolation of continuous variables; no extrapolation or age-only matching"
+    "functional_associations": "Only positive q-qualified matched-permutation associations are projected; all tests and annotation inventories remain scoped offline artifacts. Reference potential does not establish activity or causality.",
+    "proxy_matching": "Physical core + depth; GeoB R1/R2 aliases; 0.5 cm within-level match, then bracketed linear interpolation of continuous variables; no extrapolation or age-only matching",
+    "functional_reasoning": "Membership yields module context only; individual support requires the same scoped annotation witness. Missing records do not imply absence.",
+    "functional_components": "Definition KO mentions retain AND/OR/optional logic; no separate KO enrichment or activity is asserted. Category labels are recorded classifications, not inherited enrichment tests. Semantic mappings require reviewed source provenance."
   }
 }

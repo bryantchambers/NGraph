@@ -3,9 +3,15 @@ import argparse, hashlib, json, logging
 from pathlib import Path
 import numpy as np
 import pandas as pd
+from ngraph_kg_snapshots import active_directory, verify_active, verify_directory
+from ngraph_validate_functional_graph import validate_functional_graph
 ROOT=Path(__file__).resolve().parents[1]
-def validate(branch):
-    tables=ROOT/'results/ngraph'/branch/'knowledge_graph/tables'
+def validate(branch, snapshot=None):
+    kg=ROOT/'results/ngraph'/branch/'knowledge_graph'
+    if snapshot and Path(snapshot).name!=snapshot:raise ValueError('Invalid snapshot ID')
+    directory=kg/'snapshots'/snapshot if snapshot else active_directory(kg)
+    verify_directory(directory)
+    tables=directory/'tables'
     def read(name):return pd.read_csv(tables/name,sep='\t',low_memory=False)
     nodes,edges=read('kg_nodes.tsv'),read('kg_edges.tsv')
     assert nodes.node_id.is_unique and edges.edge_id.is_unique
@@ -17,6 +23,8 @@ def validate(branch):
     for predicate,part in edges.groupby('edge_type'):
         rule=schema['relations'][predicate]
         assert part.source_node_type.isin(rule['source']).all() and part.target_node_type.isin(rule['target']).all()
+    if schema["schema_version"] == "mvp-3" and (nodes.node_type == "FunctionalConcept").any():
+        validate_functional_graph(nodes, edges)
     obs=read('kg_observations.tsv');raw=read('kg_proxy_source_observations.tsv');coverage=read('kg_proxy_matching_coverage.tsv')
     assert raw.source_observation_id.is_unique
     proxy=obs[obs.match_method.isin(['exact_depth','within_depth_tolerance','linear_depth_interpolation'])].copy()
@@ -52,7 +60,20 @@ def validate(branch):
     provenance=json.loads((ROOT/'data/provenance/kg_feedstock_import.json').read_text())
     for record in provenance:
         assert hashlib.sha256((ROOT/record['canonical']).read_bytes()).hexdigest()==record['sha256']
-    report={'status':'passed','branch':branch,'schema':'mvp-1','dangling_references':0,
+    functional_nodes=nodes[nodes.node_type.isin(['ModuleFunctionalAssociation','ReferenceFunctionalAnnotation','FunctionalFeature'])]
+    associations=nodes[nodes.node_type=='ModuleFunctionalAssociation']
+    if len(associations):
+        assert (pd.to_numeric(associations.q_value,errors='coerce')<=.05).all()
+        assert associations.test_method.eq('matched_permutation').all()
+        assert (pd.to_numeric(associations.prevalence_difference,errors='coerce')>=.10).all()
+        assert (pd.to_numeric(associations.odds_ratio,errors='coerce')>=1.5).all()
+        assert (pd.to_numeric(associations.carrier_count,errors='coerce')>=5).all()
+        assert (pd.to_numeric(associations.module_annotated_count,errors='coerce')>=20).all()
+        assert (pd.to_numeric(associations.annotation_coverage,errors='coerce')>=.70).all()
+        assert (pd.to_numeric(associations.exchangeable_fraction,errors='coerce')>=.50).all()
+        assert not associations.annotation_status.fillna('').str.contains('legacy',case=False).any()
+    report={'kg_snapshot_id':tables.parent.name,'status':'passed','branch':branch,'schema':schema['schema_version'],'dangling_references':0,
+      'functional_projected_nodes':len(functional_nodes),'functional_associations':len(associations),
       'nodes':len(nodes),'edges':len(edges),'source_cells':len(raw),'matched_proxy_values':len(proxy),
       'geoB_same_depth_library_comparisons':len(shared),'geoB_same_depth_values_identical':True,
       'source_to_derived_values_reconstructed':True,'age_only_matching':False,'interpolation_extrapolations':0,
@@ -63,11 +84,13 @@ def validate(branch):
       'coverage_by_dataset':counts.to_dict('index'),'native_source_coverage':native_counts.to_dict('index'),
       'matching_status_counts':coverage.status.value_counts().to_dict(),'curated_xrf_used':bool(proxy[proxy.source_table=='xrf_geochemistry'].source_file.str.endswith('combined_xrf_geochemistry_curated.csv').all())}
     assert report['curated_xrf_used']
-    (tables/'kg_substrate_validation.json').write_text(json.dumps(report,indent=2)+'\n')
+    output=kg/'validation_history'/f'{snapshot}.json' if snapshot else kg/'tables/kg_substrate_validation.json'
+    output.parent.mkdir(parents=True,exist_ok=True)
+    output.write_text(json.dumps(report,indent=2)+'\n')
     logging.info('KG substrate validation passed: %s',report)
     print(json.dumps(report,indent=2));return report
 if __name__=='__main__':
-    ap=argparse.ArgumentParser();ap.add_argument('--branch',required=True);args=ap.parse_args()
+    ap=argparse.ArgumentParser();ap.add_argument('--branch',required=True);ap.add_argument('--snapshot');args=ap.parse_args()
     log=ROOT/'logs'/args.branch/'kg_substrate_validation.log';log.parent.mkdir(parents=True,exist_ok=True)
     logging.basicConfig(filename=log,level=logging.INFO)
-    validate(args.branch)
+    validate(args.branch,args.snapshot)

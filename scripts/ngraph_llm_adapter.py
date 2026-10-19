@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
-DEFAULT_MAX_OUTPUT_TOKENS = 512
+DEFAULT_MAX_OUTPUT_TOKENS = 2048
 DEFAULT_TEMPERATURE = 0.2
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +54,7 @@ class GeminiConfig:
     max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
     temperature: float = DEFAULT_TEMPERATURE
     timeout_s: int = 60
+    response_schema: Optional[Dict[str, Any]] = None
 
 
 def get_api_key() -> Optional[str]:
@@ -156,6 +157,8 @@ def call_gemini(prompt: str, *, system_instruction: str = "", config: Optional[G
     }
     if system_instruction.strip():
         payload["systemInstruction"] = {"parts": [{"text": system_instruction.strip()}]}
+    if cfg.response_schema is not None:
+        payload['generationConfig']['responseSchema']=cfg.response_schema
 
     body = json.dumps(payload).encode("utf-8")
     url = GEMINI_ENDPOINT.format(model=cfg.model)
@@ -175,13 +178,27 @@ def call_gemini(prompt: str, *, system_instruction: str = "", config: Optional[G
         response_obj = json.loads(response_text)
         text = _extract_text(response_obj)
         parsed = _parse_json_text(text)
+        candidate = (response_obj.get("candidates") or [{}])[0]
+        finish_reason = candidate.get("finishReason", "")
+        # HTTP 200 does not imply a complete structured answer. Never expose
+        # truncated JSON as prose or silently label it successful synthesis.
+        status = "ok"
+        if finish_reason == "MAX_TOKENS":
+            status = "output_truncated"
+        elif finish_reason and finish_reason != "STOP":
+            status = "generation_stopped"
+        elif not text:
+            status = "empty_response"
+        elif not isinstance(parsed, (dict, list)):
+            status = "invalid_json"
         return {
             "provider": "gemini",
-            "status": "ok",
+            "status": status,
             "model": cfg.model,
             "text": text,
             "json": parsed,
             "raw_response": response_obj,
+            "finish_reason": finish_reason,
         }
     except urllib.error.HTTPError as exc:
         try:

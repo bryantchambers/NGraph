@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "base": "http://127.0.0.1:10291",
+  "checks": [
+    "general Gemini question renders complete prose, not truncated JSON",
+    "functional Gemini question renders validated answer",
+    "truncation displays explicit local fallback",
+    "storage failure still renders answer in memory"
+  ],
+  "errors": []
+}

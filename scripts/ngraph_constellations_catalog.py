@@ -118,11 +118,20 @@ def build_catalog(app: Any, project_root: Path) -> list[dict[str, Any]]:
         (app.kg_dir / "tables", "Knowledge graph", "*.tsv"),
         (app.deep_modules_dir, "Figures", "*.png"),
         (app.threshold_dir / "figures", "Figures", "*.png"),
+        (branch_root / "functional_enrichment", "Functional analysis", "*.tsv"),
+        (branch_root / "functional_enrichment", "Functional analysis", "*.tsv.gz"),
+        (branch_root / "functional_enrichment", "Functional analysis", "manifest.json"),
+        (branch_root / "functional_enrichment", "Figures", "*.png"),
+        (branch_root / "functional_enrichment", "Figures", "*.svg"),
+        (branch_root / "functional_enrichment", "Reports", "*.md"),
     ]:
         if directory.exists():
             candidates.extend((category, path) for path in directory.rglob(pattern) if path.is_file())
     for path in [
         branch_root / "run_manifest.json",
+        app.kg_dir / "kg_manifest.json",
+        app.kg_dir / "snapshot_manifest.json",
+        getattr(app, 'kg_root_dir', app.kg_dir) / "tables" / "kg_substrate_validation.json",
         app.discovery_dir / "link_prediction_top_candidates.tsv",
         app.deep_modules_dir / threshold_dir(app) / "tables" / "vgae_taxon_modules.tsv",
         project_root / "data" / "metadata" / "metadata_v5.tsv",

@@ -157,11 +157,19 @@ def load_inputs(branch: str):
     sample_clr = pd.read_csv(discovery_dir / "tables" / "sample_taxon_clr_long.tsv", sep="\t")
     primary_threshold = primary_threshold_label()
     primary_method = os.environ.get("NG_DEEP_KNOWLEDGE_PRIMARY_METHOD", os.environ.get("NG_PRIMARY_METHOD", "pearson"))
+    from ngraph_kg_snapshots import active_directory
+    kg_directory=active_directory(project_root()/'results/ngraph'/branch/'knowledge_graph')
+    manifest_path=kg_directory/'kg_manifest.json'
+    if manifest_path.exists():
+        functional_scope=json.loads(manifest_path.read_text()).get('functional_projection',{}).get('scope',{})
+        if not any(os.environ.get(k) for k in ['NG_PRIMARY_THRESHOLD_LABEL','NG_DEEP_KNOWLEDGE_PRIMARY_THRESHOLD','NG_PRIMARY_THRESHOLD']):primary_threshold=functional_scope.get('threshold',primary_threshold)
+        if not any(os.environ.get(k) for k in ['NG_DEEP_KNOWLEDGE_PRIMARY_METHOD','NG_PRIMARY_METHOD']):primary_method=functional_scope.get('method',primary_method)
     sample_qc = pd.read_csv(threshold_root(branch, primary_threshold) / "tables" / "ngraph_sample_qc.tsv", sep="\t")
     taxon_nodes = pd.read_csv(combo_root(branch, primary_threshold, primary_method, kind="deep_modules") / "tables" / "hetero_taxon_nodes.tsv", sep="\t")
     site_nodes = pd.read_csv(combo_root(branch, primary_threshold, primary_method, kind="deep_modules") / "tables" / "hetero_site_nodes.tsv", sep="\t")
     link_prediction = read_table(discovery_dir / "link_prediction_top_candidates.tsv")
     return {
+        "branch": branch,
         "cards": cards,
         "card_index": card_index,
         "vectorizer": vectorizer,
@@ -175,6 +183,7 @@ def load_inputs(branch: str):
         "site_nodes": site_nodes,
         "link_prediction": link_prediction,
         "discovery_dir": discovery_dir,
+        "analysis_scope": dict(branch=branch,threshold=primary_threshold,method=primary_method,module_system='vgae',kg_snapshot_id=kg_directory.name),
     }
 
 
@@ -185,74 +194,9 @@ def semantic_context(cards: pd.DataFrame, matrix, vectorizer, query: str, top_k:
 
 
 def build_transition_answer(query: str, data: dict, context_taxa: Optional[List[str]] = None) -> dict:
-    sample_qc = data["sample_qc"].copy()
-    sample_abundance = data["sample_abundance"].copy()
-    cards = data["cards"]
-    taxon_nodes = data["taxon_nodes"].copy()
-    link_prediction = data["link_prediction"]
-
-    if "mis" not in sample_qc.columns:
-        raise SystemExit("sample_qc is missing MIS values needed for transition queries.")
-
-    mis_values = sample_qc["mis"].dropna()
-    if mis_values.empty:
-        split_val = sample_qc["mis"].median()
-    else:
-        split_val = mis_values.median()
-    low_samples = sample_qc[sample_qc["mis"] <= split_val]["sample" if "sample" in sample_qc.columns else "label"]
-    high_samples = sample_qc[sample_qc["mis"] > split_val]["sample" if "sample" in sample_qc.columns else "label"]
-
-    if "sample" not in sample_abundance.columns and "label" in sample_abundance.columns:
-        sample_abundance = sample_abundance.rename(columns={"label": "sample"})
-    if "sample" not in sample_abundance.columns:
-        raise SystemExit("sample abundance table missing sample identifiers.")
-
-    low_mean = sample_abundance[sample_abundance["sample"].isin(low_samples)].groupby("taxon")["abundance"].mean()
-    high_mean = sample_abundance[sample_abundance["sample"].isin(high_samples)].groupby("taxon")["abundance"].mean()
-    diff = pd.DataFrame({"low_mean": low_mean, "high_mean": high_mean}).fillna(0.0)
-    diff["delta"] = diff["high_mean"] - diff["low_mean"]
-    diff["abs_delta"] = diff["delta"].abs()
-    diff = diff.sort_values("abs_delta", ascending=False)
-
-    taxon_cards = cards[cards["card_type"] == "taxon"].copy()
-    taxon_cards = taxon_cards[["entity_id", "title", "summary", "source_tables"]].rename(columns={"entity_id": "taxon"})
-    diff = diff.reset_index().rename(columns={"index": "taxon"})
-    diff = diff.merge(taxon_cards, on="taxon", how="left")
-    diff = diff.merge(taxon_nodes[[c for c in ["taxon", "functional_group", "ecological_role", "tea_primary", "guild_tier", "vgae_module", "diffpool_module"] if c in taxon_nodes.columns]], on="taxon", how="left")
-    diff["score"] = normalize_series(diff["abs_delta"])
-    diff = diff.sort_values("score", ascending=False)
-
-    candidate_taxa = diff["taxon"].head(20).dropna().tolist()
-    if context_taxa:
-        candidate_taxa = list(dict.fromkeys(context_taxa + candidate_taxa))
-
-    link_hits = pd.DataFrame()
-    if link_prediction is not None and not link_prediction.empty and "taxon_taxon" in set(link_prediction["relation_type"]):
-        link_hits = link_prediction[link_prediction["relation_type"] == "taxon_taxon"].copy()
-        if "taxon_from" in link_hits.columns:
-            link_hits = link_hits[
-                link_hits["taxon_from"].isin(candidate_taxa) & link_hits["taxon_to"].isin(candidate_taxa)
-            ]
-        link_hits = link_hits.sort_values("latent_score", ascending=False).head(10)
-
-    top_taxa = diff.head(20)[["taxon", "score", "delta", "low_mean", "high_mean"]]
-    answer_lines = [
-        "The strongest transition-linked taxa are the taxa whose abundance shifts most between the two MIS bins, with predicted links used as a second-pass filter.",
-        f"Binary MIS split used here: {split_val:.3f} (lower <= split, higher > split).",
-    ]
-    if len(link_hits) > 0:
-        answer_lines.append(
-            "The most plausible co-working pairs are the high-scoring predicted links that sit inside the top differential taxa set."
-        )
-    return {
-        "query_type": "transition",
-        "query": query,
-        "answer_lines": answer_lines,
-        "top_taxa": top_taxa,
-        "link_hits": link_hits,
-        "semantic_hits": semantic_context(cards, data["card_matrix"], data["vectorizer"], query, top_k=8),
-        "context_taxa": candidate_taxa[:50],
-    }
+    # A median split of the continuous LR04 proxy is not a transition analysis.
+    from ngraph_climate_context import climate_result
+    return climate_result(query, data.get('analysis_scope'))
 
 
 def build_seed_answer(query: str, data: dict) -> dict:
@@ -449,6 +393,21 @@ def run_query(
     context_taxa: Optional[List[str]] = None,
     llm_provider: Optional[str] = None,
 ) -> dict:
+    from ngraph_climate_context import climate_question,climate_result
+    from ngraph_functional_query import functional_question
+    if data.get('branch') and (functional_question(query) or data.get('_functional_context')):
+        from ngraph_functional_query import load_backend
+        from ngraph_rag_orchestrator import augment_functional_result
+        if '_functional_backend' not in data:
+            data['_functional_backend']=load_backend(data['branch'])
+        backend=data['_functional_backend']
+        if backend:
+            functional=backend.execute(query,context=data.get('_functional_context'))
+            if functional is not None:
+                data['_functional_context']=functional.get('context')
+                return augment_functional_result(functional,llm_provider=llm_provider)
+    if climate_question(query):
+        return climate_result(query,data.get('analysis_scope'))
     qtype = choose_query_type(query)
     if qtype == "seeding":
         base = build_seed_answer(query, data)
@@ -464,6 +423,10 @@ def run_query(
             "semantic_hits": semantic_context(data["cards"], data["card_matrix"], data["vectorizer"], query, top_k=10),
             "context_taxa": [],
         }
+    scope=data.get('analysis_scope') or dict(module_system='vgae')
+    base['scope']=scope
+    prior=data.get('_functional_context') or {}
+    base['context']=dict(schema='functional-query-1',scope=scope,entities=prior.get('entities') or dict(modules=[],functions=[],taxa=[]),module_refs=prior.get('module_refs',[]),core=base.get('core',''),intent=qtype)
     return augment_result(query, base, data, top_k=10, llm_provider=llm_provider)
 
 

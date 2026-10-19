@@ -1,0 +1,93 @@
+{
+  "schema": "metadata-semantics-1",
+  "field": "mis",
+  "status": "verified_lr04_interpolation",
+  "semantic_label": "Age-interpolated LR04 benthic delta18O",
+  "is_stage_number": false,
+  "is_local_measurement": false,
+  "source_rows": 606,
+  "compared_rows": 548,
+  "matching_rows": 548,
+  "unassessed_rows": 58,
+  "max_absolute_error": 6.217248937900877e-15,
+  "interpolation": "linear at y_bp / 1000, within measured stack range; no extrapolation",
+  "tolerance": 1e-08,
+  "units": "per mil (LR04 reference scale)",
+  "reference_parsing": "Skip malformed CSV records and exclude nonfinite age/isotope values; source hashes retain exact input identity.",
+  "unit_reference": "https://doi.org/10.1594/PANGAEA.701576",
+  "invalid_reference_rows": 0,
+  "source_hashes": {
+    "data/metadata/metadata_v5.tsv": "3ab40ae47aae37148013aa4d0b316f6891a7896fecab359af184523b943fbc3a",
+    "Source/ROCS/old/Lisiecki2005_copy.txt": "8f81f8aba0eae4d8e7934ea5c774079305da7e70a806e5c9b8969d3538665909"
+  },
+  "historical_usage": [
+    "Source/ROCS/scripts/10_climate_sensitivity.R:47",
+    "Source/ROCS/scripts/06_figures.R:45"
+  ],
+  "reference_url": "https://doi.org/10.1594/PANGAEA.701576",
+  "examples": [
+    {
+      "label": "LV7001897505",
+      "core": "ST5",
+      "y_bp": 508.5,
+      "mis": 3.23,
+      "lr04_expected": 3.23
+    },
+    {
+      "label": "LV3003046968",
+      "core": "ST8",
+      "y_bp": 623.0,
+      "mis": 3.23,
+      "lr04_expected": 3.23
+    },
+    {
+      "label": "LV7008886714",
+      "core": "GeoB25202_R1",
+      "y_bp": 692.0,
+      "mis": 3.23,
+      "lr04_expected": 3.23
+    },
+    {
+      "label": "LV7008886726",
+      "core": "GeoB25202_R2",
+      "y_bp": 692.0,
+      "mis": 3.23,
+      "lr04_expected": 3.23
+    },
+    {
+      "label": "LV7001897493",
+      "core": "ST5",
+      "y_bp": 972.0,
+      "mis": 3.23,
+      "lr04_expected": 3.23
+    },
+    {
+      "label": "LV3003046953",
+      "core": "ST8",
+      "y_bp": 1521.5,
+      "mis": 3.203925,
+      "lr04_expected": 3.203925
+    },
+    {
+      "label": "LV7001897481",
+      "core": "ST5",
+      "y_bp": 2157.0,
+      "mis": 3.19727,
+      "lr04_expected": 3.19727
+    },
+    {
+      "label": "LV7008886690",
+      "core": "GeoB25202_R1",
+      "y_bp": 2324.0,
+      "mis": 3.21564,
+      "lr04_expected": 3.21564
+    }
+  ],
+  "limitations": [
+    "Age-derived global stack context, not a site-specific isotope measurement.",
+    "No MIS-stage boundaries, climate classes or transition windows are assigned.",
+    "No module/function climate-association analysis has been computed."
+  ],
+  "audit_seed": 42,
+  "source_code_sha256": "eeaed74c08d82b8637b11903c87deebb19242e426aad6a60924d0cdd734fd0ca"
+}

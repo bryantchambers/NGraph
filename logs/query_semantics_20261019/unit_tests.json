@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "tests": 121,
+  "checks": [
+    {
+      "pattern": "test_functional_*.py",
+      "passed": true
+    },
+    {
+      "pattern": "test_gemini_response_integrity.py",
+      "passed": true
+    },
+    {
+      "pattern": "test_query_scope_and_climate.py",
+      "passed": true
+    },
+    {
+      "pattern": "test_rag_evidence.py",
+      "passed": true
+    }
+  ]
+}

@@ -111,7 +111,20 @@ def primary_threshold_label() -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "abundance_thresholding"))
+    parser.add_argument('--functional-only',action='store_true',help='Rebuild the active functional KG/retrieval bundle without retraining or recomputing enrichment')
     args = parser.parse_args()
+    if args.functional_only:
+        logger=setup_logger(project_root()/'logs'/os.environ.get('NG_LOG_SCOPE','')/'12_ngraph_build_retrieval_index.log')
+        logger.info('Reindexing frozen functional evidence; seed 42; numpy %s pandas %s scipy %s sklearn %s',np.__version__,pd.__version__,scipy.__version__,sklearn.__version__)
+        from ngraph_kg_snapshots import active_directory,activate
+        from ngraph_functional_kg import project
+        from ngraph_validate_kg_substrate import validate
+        directory=active_directory(project_root()/'results/ngraph'/args.branch/'knowledge_graph')
+        scope=json.loads((directory/'kg_manifest.json').read_text())['functional_projection']['scope']
+        projection=project(args.branch,scope['threshold'],scope['method'],scope['model'],scope['db_snapshot'],activate_snapshot=False)
+        validate(args.branch,projection['kg_snapshot_id'])
+        activate(directory.parent.parent,projection['kg_snapshot_id'],require_validation=True)
+        return 0
 
     logger = setup_logger(project_root() / "logs" / os.environ.get("NG_LOG_SCOPE", "") / "12_ngraph_build_retrieval_index.log")
     logger.info("Starting retrieval index build")

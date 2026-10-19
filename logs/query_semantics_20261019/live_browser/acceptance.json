@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "base": "http://127.0.0.1:10291",
+  "checks": [
+    "transition query reports verified proxy semantics and missing analysis, not cooperation",
+    "M24 resolves to DiffPool with explicit unavailable annotation",
+    "module 24 alias keeps identity and module system",
+    "follow-up preserves unannotated module context",
+    "explicit switch returns real VGAE enrichment with live Gemini typed validation",
+    "evidence panel displays selected analysis scope",
+    "metadata definition exposes source evidence and reference"
+  ],
+  "errors": []
+}

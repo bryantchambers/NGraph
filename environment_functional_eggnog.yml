@@ -1,0 +1,9 @@
+name: ngraph-functional-eggnog
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - eggnog-mapper=2.1.14
+  - diamond=2.0.15
+# Complementary annotation environment; separate from R 4.5 / modern zlib.

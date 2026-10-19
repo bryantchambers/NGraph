@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PORT="${1:-8000}"
-BRANCH="${NG_BRANCH:-mvp_permissive_mixed_20261005}"
+PORT="${1:-10291}"
+BRANCH="${NG_BRANCH:-mvp_functional_20261008}"
 HOST="${NG_HOST:-0.0.0.0}"
 
 pick_python() {
@@ -63,7 +63,7 @@ Usage: ./start_server.sh [port]
 Starts Constellations on 0.0.0.0.
 
 Environment variables:
-  NG_BRANCH  Workstream to browse (default: mvp_permissive_mixed_20261005)
+  NG_BRANCH  Workstream to browse (default: mvp_functional_20261008)
   NG_HOST    Bind host (default: 0.0.0.0)
   NG_PYTHON  Python interpreter to use if auto-detection is not enough
   NG_LLM_PROVIDER  Set to gemini to enable the Google API adapter

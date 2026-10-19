@@ -11,14 +11,16 @@ import logging
 import mimetypes
 import os
 import shutil
+import sqlite3
 import sys
 import threading
 from collections import defaultdict, deque
+from contextlib import closing
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import networkx as nx
 import numpy as np
@@ -32,8 +34,13 @@ if str(SCRIPT_DIR) not in sys.path:
 from ngraph_discovery_common import combo_root, deep_modules_root, kg_root, knowledge_root, read_json, read_table, safe_slug  # noqa: E402
 
 
-from ngraph_kg_connectivity import ConnectivityIndex, CATALOG
+from ngraph_kg_connectivity import ConnectivityIndex, CATALOG, preset_catalog
+from ngraph_kg_snapshots import active_directory
+from ngraph_functional_paths import recognize_query, render_query, in_scope, CAUTION
 from ngraph_constellations_catalog import build_catalog, build_overview
+from ngraph_functional_retrieval import FunctionalRetrieval
+from ngraph_functional_query import FunctionalQuery
+from ngraph_rag_orchestrator import augment_functional_result
 
 SEED = 42
 np.random.seed(SEED)
@@ -322,7 +329,13 @@ class ConstellationsService:
         self.branch = branch
         self.discovery_dir = knowledge_root(branch)
         self.deep_modules_dir = deep_modules_root(branch)
-        self.kg_dir = kg_root(branch)
+        self.kg_root_dir = kg_root(branch)
+        self.kg_dir = active_directory(self.kg_root_dir)
+        candidate=os.environ.get('NG_KG_SNAPSHOT','')
+        if candidate:
+            if Path(candidate).name!=candidate:raise ValueError('Invalid candidate snapshot')
+            self.kg_dir=self.kg_root_dir/'snapshots'/candidate
+            if not (self.kg_dir/'snapshot_manifest.json').exists():raise ValueError('Incomplete candidate snapshot')
         self.threshold_dir = PROJECT_ROOT / "results" / "ngraph" / branch / PRIMARY_THRESHOLD
         self.global_dir = PROJECT_ROOT / "results" / "ngraph"
         self.query_module = load_query_module()
@@ -362,8 +375,19 @@ class ConstellationsService:
         self.kg_sites = load_text_table(self.kg_dir / "tables" / "kg_sites.tsv")
         self.kg_datasets = load_text_table(self.kg_dir / "tables" / "kg_datasets.tsv")
         self.kg_manifest = optional_json(self.kg_dir / "kg_manifest.json")
+        self.functional_retrieval = None
+        if (self.kg_dir / 'indexes/functional/manifest.json').exists():
+            self.functional_retrieval = FunctionalRetrieval(self.kg_dir)
+            cards = self.functional_retrieval.cards.copy()
+            self.cards = cards.reset_index(drop=True)
+            self.cards['__row'] = np.arange(len(self.cards))
+            self.card_matrix = self.functional_retrieval.matrix
+            self.card_vectorizer = self.functional_retrieval.vectorizer
+            self.query_data.update(cards=cards, card_index=cards, vectorizer=self.card_vectorizer, card_matrix=self.card_matrix)
         self.run_manifest = optional_json(self.global_dir / branch / "run_manifest.json")
-        self.kg_substrate_validation = optional_json(self.kg_dir / "tables" / "kg_substrate_validation.json")
+        self.kg_substrate_validation = optional_json(self.kg_root_dir / "tables" / "kg_substrate_validation.json")
+        if self.kg_substrate_validation.get("kg_snapshot_id") not in {None, self.kg_dir.name}:
+            self.kg_substrate_validation = optional_json(self.kg_root_dir/'validation_history'/f'{self.kg_dir.name}.json')
         if not self.kg_nodes.empty and "node_id" in self.kg_nodes.columns:
             self.kg_nodes["node_id"] = self.kg_nodes["node_id"].astype(str)
         if not self.kg_edges.empty:
@@ -425,13 +449,157 @@ class ConstellationsService:
         """Detect completed output replacement while the service is running."""
         paths = [
             self.global_dir / self.branch / "run_manifest.json",
+            self.kg_root_dir / "active_snapshot.json",
+            self.kg_root_dir / "tables" / "kg_substrate_validation.json",
             self.kg_dir / "tables" / "kg_nodes.tsv",
             self.kg_dir / "tables" / "kg_edges.tsv",
             self.discovery_dir / "indexes" / "card_index.tsv",
             self.discovery_dir / "tables" / "sample_taxon_abundance_long.tsv",
             self.deep_modules_dir / PRIMARY_THRESHOLD / PRIMARY_METHOD / "tables" / "vgae_taxon_modules.tsv",
         ]
+        functional = self.global_dir / self.branch / "functional_enrichment"
+        paths.extend(sorted(functional.glob("*/*/*/*/manifest.json")))
         return tuple((path.stat().st_mtime_ns, path.stat().st_size) if path.exists() else None for path in paths)
+
+    def functional_scopes(self) -> list[dict[str, Any]]:
+        root = self.global_dir / self.branch / "functional_enrichment"
+        scopes = []
+        for path in sorted(root.glob("*/*/*/*/manifest.json")):
+            threshold, method, kind, snapshot = path.relative_to(root).parts[:4]
+            manifest = optional_json(path)
+            scopes.append({"threshold": threshold, "method": method, "kind": kind,
+                           "snapshot": snapshot, "status": manifest.get("run_status", manifest.get("status", "unknown")),
+                           "updated": path.stat().st_mtime_ns})
+        return scopes
+
+    @lru_cache(maxsize=32)
+    def functional_table(self, directory: str, name: str) -> pd.DataFrame:
+        path = Path(directory) / "tables" / name
+        if not path.is_file():
+            return pd.DataFrame()
+        try:
+            return pd.read_csv(path, sep="\t", low_memory=False, dtype={"module_id": str, "function_id": str, "taxon": str})
+        except pd.errors.EmptyDataError:
+            return pd.DataFrame()
+
+    def functional_payload(self, endpoint: str, threshold: str = PRIMARY_THRESHOLD,
+                           method: str = PRIMARY_METHOD, kind: str = "vgae", snapshot: str = "",
+                           module_id: str = "", function_id: str = "", core: str = "",
+                           offset: int = 0, limit: int = 40, qualified_only: bool = False) -> dict[str, Any]:
+        """Serve immutable scoped analysis outputs, never compute enrichment in a request."""
+        all_scopes = self.functional_scopes()
+        scopes = [s for s in all_scopes if (s["threshold"], s["method"], s["kind"]) == (threshold, method, kind)]
+        if snapshot:
+            selected = next((s for s in scopes if s["snapshot"] == snapshot), None)
+        else:
+            preferred = os.environ.get("NG_FUNCTIONAL_SNAPSHOT", "")
+            selected = next((s for s in scopes if s["snapshot"] == preferred), None)
+            if selected is None and scopes:
+                completed = [s for s in scopes if s["status"] in {"completed", "complete", "passed", "ready"}]
+                selected = max(completed or scopes, key=lambda s: s["updated"])
+        base = {"branch": self.branch, "threshold": threshold, "method": method, "kind": kind,
+                "snapshot": selected["snapshot"] if selected else snapshot, "scopes": all_scopes,
+                "snapshots": scopes, "rows": [], "total_count": 0, "returned_count": 0,
+                "offset": max(0, offset), "limit": max(1, min(limit, 500)), "truncated": False,
+                "status": "not_computed", "interpretation": "Exploratory reference-supported functional potential; no measured activity"}
+        if selected is None:
+            base["message"] = "No functional analysis is available for this run and annotation snapshot."
+            return base
+        directory = self.global_dir / self.branch / "functional_enrichment" / threshold / method / kind / selected["snapshot"]
+        base["manifest"] = optional_json(directory / "manifest.json")
+        names = {"functions": "module_functions.tsv", "members": "module_function_members.tsv",
+                 "centrality": "module_centrality.tsv", "profiles": "function_profiles.tsv" if function_id else "module_profiles.tsv"}
+        if not (directory / "tables" / names[endpoint]).is_file():
+            base["message"] = f"The {endpoint} output has not been computed for this annotation snapshot."
+            return base
+        frame = self.functional_table(str(directory), names[endpoint]).copy()
+        base["status"] = selected["status"]
+        base["source_file"] = (directory / "tables" / names[endpoint]).relative_to(PROJECT_ROOT).as_posix()
+        base["modules"] = sorted(frame["module_id"].dropna().astype(str).unique().tolist()) if "module_id" in frame else []
+        if not base["modules"]:
+            profiles = self.functional_table(str(directory), "module_profiles.tsv")
+            base["modules"] = sorted(profiles["module_id"].dropna().astype(str).unique().tolist()) if "module_id" in profiles else []
+        base["cores"] = sorted(set(frame["core"].dropna().astype(str)) | (set(frame["physical_core"].dropna().astype(str)) if "physical_core" in frame else set())) if "core" in frame else []
+        for column, value in [("module_id", module_id), ("function_id", function_id), ("core", core)]:
+            if endpoint == "profiles" and function_id and column == "module_id":
+                continue  # Reference-function profiles are sample-wide, not module-restricted.
+            if endpoint == "members" and column == "core":
+                continue  # Reference evidence has no sample/core; core scopes its centrality context.
+            if value:
+                frame = frame[frame[column].astype(str) == value] if column in frame else frame.iloc[:0]
+        if endpoint == "members" and not frame.empty:
+            centrality = self.functional_table(str(directory), "module_centrality.tsv").copy()
+            if {"module_id", "taxon"}.issubset(centrality.columns):
+                if core and "core" in centrality:
+                    centrality = centrality[centrality.core.astype(str) == core]
+                elif "core" in centrality and centrality.core.astype(str).eq("all").any():
+                    centrality = centrality[centrality.core.astype(str).eq("all")]
+                if "centrality_percentile" in centrality:
+                    centrality = centrality.sort_values("centrality_percentile", ascending=False)
+                centrality = centrality.drop_duplicates(["module_id", "taxon"])
+                extra = [c for c in centrality if c not in frame or c in {"module_id", "taxon"}]
+                frame = frame.merge(centrality[extra], on=["module_id", "taxon"], how="left")
+        if qualified_only:
+            column = next((c for c in ["publish_kg", "qualified", "significant"] if c in frame), None)
+            frame = frame[frame[column].astype(str).str.lower().isin({"true", "1"})] if column else frame.iloc[:0]
+        sort_columns = [c for c in (["q_value", "permutation_z_score", "p_value", "module_id", "function_id"] if endpoint == "functions" else
+                                   ["centrality_percentile", "taxon"] if endpoint in {"members", "centrality"} else
+                                   ["core", "depth_cm", "depth_in_core_cm", "y_bp", "sample"]) if c in frame]
+        if sort_columns:
+            ascending = [column not in {"centrality_percentile", "permutation_z_score"} for column in sort_columns]
+            frame = frame.sort_values(sort_columns, ascending=ascending, na_position="last")
+        if endpoint == 'functions' and hasattr(self, 'kg_nodes') and not frame.empty:
+            associations = self.kg_nodes[self.kg_nodes.node_type.eq('ModuleFunctionalAssociation')]
+            association_ids = {(str(r.module_id), str(r.function_id), str(r.db_snapshot)): r.node_id for r in associations.itertuples()}
+            frame['kg_association_id'] = [association_ids.get((str(r.module_id), str(r.function_id), str(r.db_snapshot)), '') for r in frame.itertuples()]
+        total = len(frame)
+        rows = frame.iloc[base["offset"]:base["offset"] + base["limit"]]
+        base.update(rows=dataframe_records(rows), total_count=total, returned_count=len(rows),
+                    truncated=base["offset"] + len(rows) < total)
+        if total == 0:
+            base["message"] = "No records match these filters. Missing annotation does not establish absent function."
+        files = []
+        for path in sorted(directory.glob("figures/*")):
+            if path.is_file() and path.suffix.lower() in {".png", ".svg"}:
+                files.append({"id": path.relative_to(PROJECT_ROOT).as_posix(), "name": path.name})
+        base["figures"] = files
+        return base
+
+    def taxon_function_payload(self, taxon: str, threshold: str = PRIMARY_THRESHOLD,
+                              method: str = PRIMARY_METHOD, kind: str = "vgae", snapshot: str = "",
+                              feature_namespace: str = "", offset: int = 0, limit: int = 40) -> dict[str, Any]:
+        """Inspect the full native annotation inventory through an indexed read-only lookup."""
+        if not taxon.strip():
+            raise ValueError("A taxon identifier is required")
+        data = self.functional_payload("functions", threshold=threshold, method=method, kind=kind,
+                                       snapshot=snapshot, limit=1)
+        data.update(taxon=taxon, feature_namespace=feature_namespace, rows=[], total_count=0,
+                    returned_count=0, truncated=False, offset=max(0, offset), limit=max(1, min(limit, 500)))
+        if not data.get("snapshot") or "manifest" not in data:
+            return data
+        directory = self.global_dir / self.branch / "functional_enrichment" / threshold / method / kind / data["snapshot"]
+        index = directory / "indexes" / "reference_annotations.sqlite"
+        if not index.is_file():
+            data.update(status="not_computed", message="The indexed reference annotation inventory is not available for this snapshot.")
+            return data
+        where, values = "taxon = ?", [taxon]
+        if feature_namespace:
+            where += " AND feature_namespace = ?"
+            values.append(feature_namespace)
+        uri = f"file:{quote(str(index))}?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as connection:
+            connection.row_factory = sqlite3.Row
+            total = connection.execute(f"SELECT COUNT(*) FROM annotations WHERE {where}", values).fetchone()[0]
+            rows = connection.execute(f"SELECT * FROM annotations WHERE {where} ORDER BY feature_namespace, feature_id, gene_id LIMIT ? OFFSET ?",
+                                      [*values, data["limit"], data["offset"]]).fetchall()
+            namespaces = [row[0] for row in connection.execute("SELECT DISTINCT feature_namespace FROM annotations WHERE taxon = ? ORDER BY feature_namespace", [taxon])]
+        data.update(status="available", rows=[dict(row) for row in rows], total_count=total,
+                    returned_count=len(rows), truncated=data["offset"] + len(rows) < total,
+                    source_file=index.relative_to(PROJECT_ROOT).as_posix(),
+                    feature_namespaces=namespaces,
+                    download_file=(directory / "tables" / "reference_annotations.tsv.gz").relative_to(PROJECT_ROOT).as_posix(),
+                    message="Full reference gene annotations, including evidence outside the qualified KG projection; missing annotations do not establish absence.")
+        return data
 
     def summary(self) -> Dict[str, Any]:
         card_counts = self.cards.groupby("card_type").size().sort_values(ascending=False).reset_index(name="count") if not self.cards.empty else pd.DataFrame()
@@ -852,7 +1020,7 @@ class ConstellationsService:
             "taxa": dataframe_records(rows if 'rows' in locals() else pd.DataFrame(), limit=limit),
         }
 
-    def build_module_payload(self, threshold: str = PRIMARY_THRESHOLD, method: str = PRIMARY_METHOD, kind: str = "vgae", module_id: str = "", limit: int = 40) -> Dict[str, Any]:
+    def build_module_payload(self, threshold: str = PRIMARY_THRESHOLD, method: str = PRIMARY_METHOD, kind: str = "vgae", module_id: str = "", limit: int = 40, core: str = "") -> Dict[str, Any]:
         limit = max(1, min(limit, 2000))
         summary, focus_rows, focus_module = self.module_summary(threshold, method, kind=kind, module_id=module_id)
         if summary.empty:
@@ -874,6 +1042,32 @@ class ConstellationsService:
             graph_edges.append({"source": module_node_id, "target": taxon, "weight": 0.9})
         svg = build_svg_graph(graph_nodes, graph_edges, f"{kind.upper()} module {focus_module}")
         members = dataframe_records(focus_rows, limit=limit)
+        association = self.combo_context(threshold, method)["taxon_taxon_edges"].copy()
+        cores = sorted(association["source_core"].dropna().astype(str).unique().tolist()) if "source_core" in association else []
+        selected_core = core if core in cores else (cores[0] if cores else "")
+        if "source_core" in association:
+            association = association[association["source_core"].astype(str) == selected_core]
+        member_ids = set(focus_rows["taxon"].astype(str)) if "taxon" in focus_rows else set()
+        if {"taxon_from", "taxon_to"}.issubset(association.columns):
+            association = association[association.taxon_from.astype(str).isin(member_ids) & association.taxon_to.astype(str).isin(member_ids)]
+        else:
+            association = pd.DataFrame()
+        strength = defaultdict(float)
+        for row in association.to_dict("records"):
+            value = float(row.get("signed_weight", row.get("weight", 0)) or 0)
+            if value > 0:
+                strength[str(row["taxon_from"])] += value
+                strength[str(row["taxon_to"])] += value
+        ranked = sorted(member_ids, key=lambda taxon: (-strength[taxon], taxon))
+        visible = set(ranked[:40])
+        displayed = association[association.taxon_from.astype(str).isin(visible) & association.taxon_to.astype(str).isin(visible)] if not association.empty else association
+        if "abs_weight" in displayed:
+            displayed = displayed.sort_values("abs_weight", ascending=False)
+        displayed = displayed.head(300)
+        actual_nodes = [{"id": taxon, "label": taxon, "type": "taxon", "positive_strength": strength[taxon]} for taxon in ranked[:40]]
+        actual_edges = [{"source": str(row["taxon_from"]), "target": str(row["taxon_to"]),
+                         "weight": row.get("signed_weight", row.get("weight")), "relation": row.get("relation", ""),
+                         "core": selected_core} for row in displayed.to_dict("records")]
         return {
             "title": f"{kind.upper()} module {focus_module}",
             "module_id": focus_module,
@@ -881,6 +1075,11 @@ class ConstellationsService:
             "summary": dataframe_records(summary, limit=100),
             "members": members,
             "svg": svg,
+            "graph_nodes": actual_nodes, "graph_edges": actual_edges, "cores": cores, "core": selected_core,
+            "graph_total_nodes": len(member_ids), "graph_returned_nodes": len(actual_nodes),
+            "graph_total_edges": len(association), "graph_returned_edges": len(actual_edges),
+            "graph_truncated": len(actual_nodes) < len(member_ids) or len(actual_edges) < len(association),
+            "graph_interpretation": "Within-module associations from one library/core network; positive strength ranks structural members, not causal drivers",
         }
 
     def build_embedding_payload(self, focus: str = "", limit: int = 800) -> Dict[str, Any]:
@@ -1059,8 +1258,31 @@ class ConstellationsService:
             ),
         }
 
-    def query(self, query: str, context_taxa: Optional[List[str]] = None, llm_provider: Optional[str] = None) -> Dict[str, Any]:
-        result = self.query_module.run_query(query, self.query_data, context_taxa=context_taxa, llm_provider=llm_provider)
+    def query(self, query: str, context_taxa: Optional[List[str]] = None, llm_provider: Optional[str] = None, context=None, scope=None) -> Dict[str, Any]:
+        if getattr(self, 'functional_retrieval', None) is not None:
+            if not hasattr(self, 'functional_query_engine'):
+                self.functional_query_engine = FunctionalQuery(self)
+            functional = self.functional_query_engine.execute(query, context=context, requested_scope=scope)
+            if functional is not None:
+                return augment_functional_result(functional, llm_provider=llm_provider)
+        functional = recognize_query(query)
+        if functional:
+            if functional.pop('needs_entities', False):
+                return {'query_type': 'functional_kg', 'answer_lines': ['Choose a community module (for example M3), taxon ID or KEGG function ID (for example M00091). ' + CAUTION], 'retrieved_cards': [], 'llm_status': 'needs_entities'}
+            result = self.kg_connectivity(**functional, limit=20)
+            return render_query(result, query)
+        query_data=dict(self.query_data)
+        query_data['analysis_scope']=dict(self.functional_path_scope(),kg_snapshot_id=self.kg_dir.name)
+        # Context is request-local; shared service state must not mix users.
+        query_data['_functional_context']=context
+        if hasattr(self,'functional_query_engine'):
+            query_data['_functional_backend']=self.functional_query_engine
+        for supplied in [scope or {},(context or {}).get('scope',{})]:
+            if any(value and query_data['analysis_scope'].get(key)!=value for key,value in supplied.items() if key!='module_system'):
+                return dict(query_type='general',llm_status='context_reset',answer_lines=['The selected analysis changed. Clear the session and select the current analysis.'],retrieved_cards=[])
+            if supplied.get('module_system') in {'vgae','diffpool'}:
+                query_data['analysis_scope']['module_system']=supplied['module_system']
+        result = self.query_module.run_query(query, query_data, context_taxa=context_taxa, llm_provider=llm_provider)
         serializable = dict(result)
         for key in ["semantic_hits", "top_taxa", "link_hits", "retrieved_cards", "retrieved_links"]:
             if key in serializable and isinstance(serializable[key], pd.DataFrame):
@@ -1162,7 +1384,7 @@ class ConstellationsService:
             frame = frame[frame["node_type"].astype(str).str.lower() == node_type.lower()]
         q = str(query or "").strip()
         if q:
-            text_cols = [c for c in ["node_id", "label", "node_type", "site_id", "taxon", "module_id", "variable", "ontology_prefix", "ontology_scope", "source_table"] if c in frame.columns]
+            text_cols = [c for c in ["node_id", "label", "node_type", "site_id", "taxon", "module_id", "variable", "ontology_prefix", "ontology_scope", "source_table", "function_id", "function_name", "function_namespace", "db_snapshot"] if c in frame.columns]
             blob = frame[text_cols].fillna("").astype(str).agg(" ".join, axis=1).str.lower()
             tokens = [tok for tok in q.lower().split() if tok]
             score = pd.Series(np.zeros(len(frame), dtype=float), index=frame.index)
@@ -1364,10 +1586,111 @@ class ConstellationsService:
             return "Permissive mixed-abundance sensitivity analysis: TAD where positive, read fallback otherwise"
         return "TAD-only abundance analysis"
 
-    def kg_connectivity(self, source, target, metapath, limit=20):
-        if not hasattr(self, "connectivity_index"):
-            self.connectivity_index = ConnectivityIndex(self.kg_nodes.to_dict("records"), self.kg_edges.to_dict("records"))
-        return self.connectivity_index.search(self.resolve_kg_node_id(source), self.resolve_kg_node_id(target), metapath, limit)
+    def functional_path_scope(self, threshold='', method='', kind='', snapshot=''):
+        active = self.kg_manifest.get('functional_projection', {}).get('scope', {})
+        return {'branch': self.branch, 'threshold': threshold or active.get('threshold', PRIMARY_THRESHOLD),
+                'method': method or active.get('method', PRIMARY_METHOD), 'module_system': kind or active.get('model', 'vgae'),
+                'db_snapshot': snapshot or active.get('db_snapshot', '')}
+
+    @lru_cache(maxsize=8)
+    def scoped_connectivity(self, threshold, method, kind, snapshot, core=''):
+        scope = self.functional_path_scope(threshold, method, kind, snapshot)
+        predicates = {'taxon_member_of_module','module_has_functional_association','association_with_function',
+                      'association_supported_by_annotation','taxon_has_reference_annotation','annotation_supports_function',
+                      'association_derived_from_analysis','annotation_derived_from_dataset','functional_feature_has_concept','annotation_from_reference','functional_definition_mentions_ko','annotation_records_ko','functional_definition_has_recorded_category','functional_feature_has_reviewed_mapping','functional_mapping_targets_term'}
+        frame = self.kg_edges[self.kg_edges.edge_type.isin(predicates)]
+        identifiers = set(frame.source_id) | set(frame.target_id)
+        nodes = self.kg_nodes[self.kg_nodes.node_id.isin(identifiers)].to_dict('records')
+        edges = frame.to_dict('records')
+        if core:
+            sample_ids = set(self.kg_nodes.loc[self.kg_nodes.node_type.eq('Sample') &
+                self.kg_nodes.get('core', pd.Series('', index=self.kg_nodes.index)).astype(str).eq(core), 'node_id'])
+            if not sample_ids:
+                sample_ids = set(self.kg_edges.loc[self.kg_edges.edge_type.eq('site_has_sample') & self.kg_edges.source_id.eq('site:' + core), 'target_id'])
+            observed = set(self.kg_edges.loc[self.kg_edges.edge_type.isin(['sample_observed_taxon', 'sample_read_supported_taxon']) & self.kg_edges.source_id.isin(sample_ids), 'target_id'])
+            contextual_modules=set(self.kg_edges.loc[self.kg_edges.edge_type.eq('taxon_member_of_module') & self.kg_edges.source_id.isin(observed),'target_id'])
+            edges = [e for e in edges if e['edge_type'] != 'taxon_member_of_module' or e['source_id'] in observed]
+            edges = [e for e in edges if e['edge_type'] != 'module_has_functional_association' or e['source_id'] in contextual_modules]
+        return ConnectivityIndex(nodes, edges, scope)
+
+    def resolve_functional_id(self, value, scope):
+        if not value:
+            return ''
+        identifier = self.resolve_kg_node_id(value)
+        frame = self.kg_nodes
+        known = identifier in self.kg_node_ids
+        if known and str(self.kg_node_lookup.loc[identifier, 'node_type']) not in {'FunctionalConcept', 'FunctionalFeature', 'Module'}:
+            return identifier
+        # A stable concept may map to several definitions; never silently choose another run.
+        code = value.split(':')[-1]
+        selected = frame[frame.get('function_id', pd.Series('', index=frame.index)).astype(str).eq(code) & frame.node_type.eq('FunctionalFeature')]
+        if known and self.kg_node_lookup.loc[identifier, 'node_type'] == 'FunctionalFeature':
+            selected = frame[frame.node_id.eq(identifier)]
+        if selected.empty:
+            selected = frame[frame.node_type.eq('Module') & frame.get('module_id', pd.Series('', index=frame.index)).astype(str).eq(value)]
+            if known and self.kg_node_lookup.loc[identifier, 'node_type'] == 'Module':
+                selected = frame[frame.node_id.eq(identifier)]
+        candidates = [r['node_id'] for r in selected.to_dict('records') if in_scope(r, scope)]
+        if len(candidates) > 1:
+            raise ValueError('Ambiguous entity: choose an explicit analysis-scoped node ID')
+        if not candidates and known and self.kg_node_lookup.loc[identifier, 'node_type'] == 'FunctionalConcept':
+            return ''
+        return candidates[0] if candidates else identifier
+
+    def kg_connectivity(self, source, target='', metapath='taxon_module_function', limit=20,
+                        threshold='', method='', kind='', snapshot='', core='', carriers_only=False):
+        functional = metapath in {'taxon_module_function', 'function_module_taxon', 'function_module', 'module_function', 'taxon_function', 'module_function_ko'}
+        if functional:
+            scope = self.functional_path_scope(threshold, method, kind, snapshot)
+            index = self.scoped_connectivity(scope['threshold'], scope['method'], scope['module_system'], scope['db_snapshot'], core)
+            source_id, target_id = self.resolve_functional_id(source, scope), self.resolve_functional_id(target, scope)
+        else:
+            if not hasattr(self, 'connectivity_index'):
+                self.connectivity_index = ConnectivityIndex(self.kg_nodes.to_dict('records'), self.kg_edges.to_dict('records'))
+            index = self.connectivity_index
+            source_id, target_id = self.resolve_kg_node_id(source), self.resolve_kg_node_id(target)
+        result = index.search(source_id, target_id, metapath, limit, carriers_only=carriers_only)
+        if functional:
+            result['interpretation'] = CAUTION
+            result['kg_snapshot_id'] = self.kg_dir.name if self.kg_dir.parent.name == 'snapshots' else 'legacy_file_backed'
+            result['source_hashes'] = self.kg_manifest.get('functional_projection', {}).get('source_hashes', {})
+            result['observation_policy'] = 'core context includes explicit TAD observations and separate read-support evidence'
+            result['core'] = core
+            result['statistics_scope']='Global enrichment analysis; core filters connectivity/context, not the enrichment test.'
+            for path in result.get('paths', []):
+                if path.get('carrier_status') == 'outside_projected_inventory':
+                    taxon = next(n['node_id'] for n in path['node_details'] if n['node_type'] == 'Taxon')
+                    feature = next(n for n in path['node_details'] if n['node_type'] == 'FunctionalFeature')
+                    path['carrier_status'] = self.recorded_carrier_status(taxon.removeprefix('taxon:'), feature['function_id'])
+        return result
+
+    def recorded_carrier_status(self, taxon, function_id):
+        path = self.kg_dir / 'indexes/support_status.sqlite'
+        if not path.exists():
+            return 'outside_projected_inventory'
+        with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as connection:
+            row = connection.execute('SELECT is_carrier,status FROM support_status WHERE taxon=? AND function_id=?', (taxon, function_id)).fetchone()
+            background = connection.execute('SELECT background_status FROM inventory WHERE taxon=?', (taxon,)).fetchone()
+        if row and row[1] == 'unresolved_definition':
+            return 'not_evaluated'
+        if row:
+            return 'supported_in_catalog_outside_projection' if row[0] else 'no_complete_support_recorded'
+        if background and 'mapping' in background[0]:
+            return 'unmapped'
+        return 'not_evaluated'
+
+    def functional_path_demo(self):
+        associations = self.kg_nodes[self.kg_nodes.node_type.eq('ModuleFunctionalAssociation')]
+        if associations.empty:
+            return None
+        preferred = associations[associations.function_id.eq('M00091')]
+        association = (preferred if len(preferred) else associations).iloc[0]
+        module = self.kg_edges.loc[self.kg_edges.edge_type.eq('module_has_functional_association') & self.kg_edges.target_id.eq(association.node_id), 'source_id'].iloc[0]
+        function = self.kg_edges.loc[self.kg_edges.edge_type.eq('association_with_function') & self.kg_edges.source_id.eq(association.node_id), 'target_id'].iloc[0]
+        annotations = set(self.kg_edges.loc[self.kg_edges.edge_type.eq('association_supported_by_annotation') & self.kg_edges.source_id.eq(association.node_id), 'target_id'])
+        carriers = self.kg_edges.loc[self.kg_edges.edge_type.eq('taxon_has_reference_annotation') & self.kg_edges.target_id.isin(annotations), 'source_id']
+        return {'question': 'Which community module connects this taxon to a reference-supported KEGG function?',
+                'source': sorted(set(carriers))[0], 'target': function, 'module': module, 'metapath': 'taxon_module_function'}
 
     def kg_path(self, source: str, target: str, max_depth: int = 4, edge_type: str = "") -> Dict[str, Any]:
         source_id = self.resolve_kg_node_id(source)
@@ -1434,6 +1757,7 @@ class ConstellationsService:
         files = []
         for rel in [
             "kg_manifest.json",
+            "snapshot_manifest.json",
             "reports/KG_SCHEMA_AND_IMPORT_REPORT.md",
             "tables/kg_substrate_validation.json",
             "tables/kg_proxy_source_observations.tsv",
@@ -1451,7 +1775,7 @@ class ConstellationsService:
             "tables/kg_sites.tsv",
             "tables/kg_datasets.tsv",
         ]:
-            path = self.kg_dir / rel
+            path = (self.kg_root_dir if rel == 'tables/kg_substrate_validation.json' else self.kg_dir) / rel
             files.append({"name": rel, "exists": path.exists(), "size": path.stat().st_size if path.exists() else 0, "path": str(path)})
         return {
             "branch": self.branch,
@@ -1464,6 +1788,25 @@ class ConstellationsService:
 
 
 class ConstellationsHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        path=urlparse(self.path).path
+        if path != '/api/query':
+            self.send_json({'error':'Unknown endpoint'},status=404);return
+        try:
+            length=int(self.headers.get('Content-Length','0'))
+            if not 0 < length <= 65536:raise ValueError('Query request must be between 1 and 65536 bytes')
+            request=json.loads(self.rfile.read(length))
+            if not isinstance(request,dict) or not isinstance(request.get('query'),str):raise ValueError('A question is required')
+            context=request.get('context') or {};scope=request.get('scope') or {}
+            if not isinstance(context,dict) or not isinstance(scope,dict):raise ValueError('Invalid query context')
+            app=self.refresh_app_if_changed()
+            payload=app.query(request['query'][:4000],llm_provider=request.get('llm_provider'),context=context,scope=scope)
+            app.logger.info("query provider=%s status=%s model=%s finish_reason=%s",
+                            payload.get('llm_provider','local'),payload.get('llm_status',''),
+                            payload.get('llm_model',''),payload.get('llm_finish_reason',''))
+            self.send_json(payload)
+        except (ValueError,TypeError) as exc:self.send_json({'error':str(exc)},status=400)
+        except Exception:self.send_json({'error':'Query execution failed'},status=500)
     app: ConstellationsService
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -1612,15 +1955,21 @@ class ConstellationsHandler(BaseHTTPRequestHandler):
                 demo = optional_json(app.kg_dir / "tables" / "mvp_validation_and_demo.json")
                 self.send_json({"questions": [{"question": q["question"], **{k: q["answer"][k] for k in ["source", "target", "metapath"]}} for q in demo.get("questions", [])]})
                 return
+            if path == '/api/kg/functional-demo':
+                self.send_json({'demo': app.functional_path_demo()})
+                return
             if path == "/api/kg/metapaths":
-                self.send_json({"metapaths": {k: [{"predicate": p, "direction": d} for p,d in v] for k,v in CATALOG.items()}})
+                self.send_json({"presets": preset_catalog(), "functional_scope": app.functional_path_scope(), "metapaths": {k: [{"predicate": p, "direction": d} for p,d in v] for k,v in CATALOG.items()}})
                 return
             if path == "/api/kg/connectivity":
                 metapath = params.get("metapath", ["site_taxon"])[0]
                 if metapath not in CATALOG:
                     self.send_json({"error": "Unknown metapath", "choices": list(CATALOG)}, status=400)
                     return
-                self.send_json(app.kg_connectivity(params.get("source", [""])[0], params.get("target", [""])[0], metapath, safe_int(params.get("limit", ["20"])[0], 20)))
+                self.send_json(app.kg_connectivity(params.get("source", [""])[0], params.get("target", [""])[0], metapath, safe_int(params.get("limit", ["20"])[0], 20),
+                    threshold=params.get('threshold', [''])[0], method=params.get('method', [''])[0],
+                    kind=params.get('kind', [''])[0], snapshot=params.get('snapshot', [''])[0], core=params.get('core', [''])[0],
+                    carriers_only=params.get('carriers_only', ['false'])[0].lower() in {'true', '1'}))
                 return
             if path == "/api/kg/schema":
                 self.send_json(app.kg_schema())
@@ -1719,8 +2068,30 @@ class ConstellationsHandler(BaseHTTPRequestHandler):
                 method = params.get("method", [PRIMARY_METHOD])[0]
                 kind = params.get("kind", ["vgae"])[0]
                 module_id = params.get("module_id", [""])[0]
-                payload = app.build_module_payload(threshold=threshold, method=method, kind=kind, module_id=module_id, limit=int(params.get("limit", ["40"])[0]))
+                payload = app.build_module_payload(threshold=threshold, method=method, kind=kind, module_id=module_id, limit=int(params.get("limit", ["40"])[0]), core=params.get("core", [""])[0])
                 self.send_json(payload)
+                return
+            if path in {"/api/module-functions", "/api/module-function-members", "/api/module-centrality", "/api/module-profiles"}:
+                endpoint = {"/api/module-functions": "functions", "/api/module-function-members": "members",
+                            "/api/module-centrality": "centrality", "/api/module-profiles": "profiles"}[path]
+                self.send_json(app.functional_payload(
+                    endpoint, threshold=params.get("threshold", [PRIMARY_THRESHOLD])[0],
+                    method=params.get("method", [PRIMARY_METHOD])[0], kind=params.get("kind", ["vgae"])[0],
+                    snapshot=params.get("snapshot", [""])[0], module_id=params.get("module_id", [""])[0],
+                    function_id=params.get("function_id", [""])[0], core=params.get("core", [""])[0],
+                    offset=safe_int(params.get("offset", ["0"])[0]), limit=safe_int(params.get("limit", ["40"])[0], 40),
+                    qualified_only=params.get("qualified_only", ["false"])[0].lower() in {"true", "1"}))
+                return
+            if path == "/api/taxon-functions":
+                taxon = params.get("taxon", [""])[0].strip()
+                if not taxon:
+                    self.send_json({"error": "A taxon identifier is required"}, status=400)
+                    return
+                self.send_json(app.taxon_function_payload(taxon,
+                    threshold=params.get("threshold", [PRIMARY_THRESHOLD])[0], method=params.get("method", [PRIMARY_METHOD])[0],
+                    kind=params.get("kind", ["vgae"])[0], snapshot=params.get("snapshot", [""])[0],
+                    feature_namespace=params.get("feature_namespace", [""])[0],
+                    offset=safe_int(params.get("offset", ["0"])[0]), limit=safe_int(params.get("limit", ["40"])[0], 40)))
                 return
             if path == "/api/embedding":
                 focus = params.get("focus", [""])[0]
@@ -1758,13 +2129,15 @@ class ConstellationsHandler(BaseHTTPRequestHandler):
                 return
             self.send_response(404)
             self.end_headers()
+        except ValueError as exc:
+            self.send_json({"error": str(exc), "path": path}, status=400)
         except Exception as exc:  # pragma: no cover - runtime guard
             self.send_json({"error": str(exc), "path": path}, status=500)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "mvp_permissive_mixed_20261005"))
+    parser.add_argument("--branch", default=os.environ.get("NG_BRANCH", "mvp_functional_20261008"))
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
