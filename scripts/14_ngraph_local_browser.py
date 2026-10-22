@@ -41,6 +41,7 @@ from ngraph_constellations_catalog import build_catalog, build_overview
 from ngraph_functional_retrieval import FunctionalRetrieval
 from ngraph_functional_query import FunctionalQuery
 from ngraph_rag_orchestrator import augment_functional_result
+from ngraph_llm_adapter import get_model
 
 SEED = 42
 np.random.seed(SEED)
@@ -1314,7 +1315,7 @@ class ConstellationsService:
             "kg_measurements": int(len(self.kg_measurements)),
             "llm_provider_default": provider,
             "gemini_key_present": api_key_present,
-            "gemini_model": os.environ.get("NG_GEMINI_MODEL", "gemini-3.1-flash-lite"),
+            "gemini_model": get_model(),
         }
 
     def report_names(self) -> List[str]:
@@ -1801,9 +1802,9 @@ class ConstellationsHandler(BaseHTTPRequestHandler):
             if not isinstance(context,dict) or not isinstance(scope,dict):raise ValueError('Invalid query context')
             app=self.refresh_app_if_changed()
             payload=app.query(request['query'][:4000],llm_provider=request.get('llm_provider'),context=context,scope=scope)
-            app.logger.info("query provider=%s status=%s model=%s finish_reason=%s",
+            app.logger.info("query provider=%s status=%s model=%s finish_reason=%s attempts=%s",
                             payload.get('llm_provider','local'),payload.get('llm_status',''),
-                            payload.get('llm_model',''),payload.get('llm_finish_reason',''))
+                            payload.get('llm_model',''),payload.get('llm_finish_reason',''),payload.get('llm_attempts',0))
             self.send_json(payload)
         except (ValueError,TypeError) as exc:self.send_json({'error':str(exc)},status=400)
         except Exception:self.send_json({'error':'Query execution failed'},status=500)

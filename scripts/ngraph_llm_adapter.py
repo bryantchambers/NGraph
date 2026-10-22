@@ -6,16 +6,17 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from pathlib import Path
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Optional
 
 
-DEFAULT_MODEL = "gemini-3.1-flash-lite"
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 DEFAULT_MAX_OUTPUT_TOKENS = 2048
-DEFAULT_TEMPERATURE = 0.2
+DEFAULT_TEMPERATURE = 1.0
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -131,7 +132,7 @@ def _parse_json_text(text: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def call_gemini(prompt: str, *, system_instruction: str = "", config: Optional[GeminiConfig] = None) -> Dict[str, Any]:
+def _call_gemini_once(prompt: str, *, system_instruction: str = "", config: Optional[GeminiConfig] = None) -> Dict[str, Any]:
     cfg = config or build_config()
     if cfg is None:
         return {
@@ -222,3 +223,29 @@ def call_gemini(prompt: str, *, system_instruction: str = "", config: Optional[G
             "json": None,
             "error": str(exc),
         }
+
+
+def call_gemini(prompt: str, *, system_instruction: str = "", config: Optional[GeminiConfig] = None) -> Dict[str, Any]:
+    """Retry transient server failures within the original request time budget.
+
+    Authentication, quota, content and evidence-validation failures are not
+    retried. The model, evidence and structured-output schema stay identical.
+    """
+    cfg=config or build_config()
+    if cfg is None:
+        return dict(_call_gemini_once(prompt,system_instruction=system_instruction),attempts=0,retry_statuses=[])
+    deadline=time.monotonic()+cfg.timeout_s
+    failures=[]
+    result=dict(provider='gemini',status='error',model=cfg.model,text='',json=None)
+    attempts=0
+    for attempt in range(1,4):
+        remaining=deadline-time.monotonic()
+        if remaining<=0:break
+        attempts=attempt
+        result=_call_gemini_once(prompt,system_instruction=system_instruction,config=replace(cfg,timeout_s=remaining))
+        if result.get('status') not in {'http_error_502','http_error_503','http_error_504'}:break
+        failures.append(result['status'])
+        delay=1.*2**(attempt-1)
+        if attempt==3 or deadline-time.monotonic()<=delay:break
+        time.sleep(delay)
+    return dict(result,attempts=attempts,retry_statuses=failures)

@@ -202,3 +202,23 @@ The legacy median-`mis` transition analysis is retired from active query executi
 Climate questions now return source evidence and an explicit unavailable-analysis explanation. No stage boundaries, glacial/interglacial classes, transition windows or MIS–function association tests were invented. Those remain subsequent analysis work. Generalization, biological annotation review, XRF/proxy calibration, module robustness, weighted KS and the original MVP acceptance backlog remain open.
 
 Acceptance for the 2026-10-19 scope/climate repair: 121 tests and 11 browser checks passed. The final five-question HTTP replay on 10291 returned explicit climate-analysis unavailability, identified DiffPool M24 under both spellings, and validated the VGAE M3 and bounded key-findings syntheses. Source hashes and reports: `logs/query_semantics_20261019/validation_summary.json`. Port 10289 remains archived; the temporary 10293 preview has been stopped.
+
+
+### Gemini provider overload and bounded retries — 2026-10-19
+
+A direct minimal request and the live Query console both returned Google HTTP 503/UNAVAILABLE with the provider message "This model is currently experiencing high demand." The adapter now makes at most three identical requests on HTTP 502/503/504, using 1s/2s backoff within the original 60-second budget. Authentication/quota failures and invalid/ungrounded outputs are not retried. No alternate model is selected automatically. Both synthesis routes retain attempt/status diagnostics, and POST logs record attempts without credentials or prompt text.
+
+Fourteen adapter/retry tests and twelve functional query integration tests pass. The live probe on 10291 still failed all three provider attempts in 7.19 seconds, retaining local evidence; provider recovery is not claimed. Evidence: `logs/gemini_retry_20261019/validation_summary.json`. Google recommends exponential backoff for transient 503 errors: https://ai.google.dev/gemini-api/docs/troubleshooting . Sustained provider unavailability requires recovery or an explicitly configured alternative model; it is distinct from graph retrieval or evidence-validation failure.
+
+
+### Current Gemini Flash-Lite model — 2026-10-19
+
+The default synthesis model is now `gemini-3.5-flash-lite` in `scripts/ngraph_llm_adapter.py` and the launcher help. Health reporting uses the adapter's `get_model()` instead of an independent hardcoded name. The active 10291 process explicitly selects the same model. The Google model catalogue and authenticated models API were both checked. Google recommends 3.5 Flash-Lite as the replacement for 3.1 Flash-Lite: https://ai.google.dev/gemini-api/docs/deprecations . This is the current stable Flash-Lite family, not the newest model across every Gemini tier.
+
+The newer Flash-tier model `gemini-3.8-flash` and the `gemini-flash-latest` alias returned HTTP 503 in live tests; `gemini-4-argon` returned HTTP 429 with this key. `gemini-3.5-flash-lite` completed both a connectivity request and a typed, cited module-enrichment synthesis on its first attempt. The old 3.1 request genuinely returned Google's high-demand message, but concluding that retries alone were sufficient without checking the current catalogue was incomplete. Frozen historical model labels and prior validation reports are retained as history.
+
+Research and probe records: `logs/gemini_model_update_20261019/`. Fourteen adapter/retry tests and twelve functional integration tests pass. This model migration does not change graph evidence, enrichment scores, scientific gates or module scope.
+
+The migration also changes the default temperature from 0.2 to Google's recommended 1.0 for Gemini 3.x. A general-query probe at 0.2 entered repetitive output and reached MAX_TOKENS; the same evidence prompt at 1.0 completed in 459 output tokens and passed citation/scope checks. This is a targeted compatibility observation, not a general model benchmark. Guidance: https://ai.google.dev/gemini-api/docs/gemini-3 . Explicit environment overrides remain supported; no model or temperature override exists in the local .env file. The active process explicitly selects the verified 3.5 Flash-Lite / 1.0 settings.
+
+Final live migration check: health reports `gemini-3.5-flash-lite`; the module-enrichment query returned `validated` on attempt 1. A broader general provenance summary still reached the response cap (`output_truncated`) and fell back safely, so general response reliability remains open. This does not invalidate the successful model selection or functional-query check. See `logs/gemini_model_update_20261019/validation_summary.json`.

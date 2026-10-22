@@ -69,7 +69,7 @@ Environment variables:
   NG_LLM_PROVIDER  Set to gemini to enable the Google API adapter
   GEMINI_API_KEY   Gemini API key if you want the Google adapter active
   GOOGLE_API_KEY   Alternate Gemini API key env var supported by the adapter
-  NG_GEMINI_MODEL  Gemini model override (default: gemini-3.1-flash-lite)
+  NG_GEMINI_MODEL  Gemini model override (default: gemini-3.5-flash-lite)
 EOF
   exit 0
 fi
