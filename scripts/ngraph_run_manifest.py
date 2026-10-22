@@ -19,7 +19,8 @@ def main():
          'settings':{k:v for k,v in os.environ.items() if k.startswith('NG_') and 'KEY' not in k},
          'packages':{p:importlib.metadata.version(p) for p in ['numpy','pandas','torch','torch-geometric','scikit-learn']},
          'source_sha256':{str(p.relative_to(root)):digest(p) for p in list((root/'scripts').glob('*.py'))+list((root/'scripts').glob('*.R'))+[root/'config_ngraph.R',root/'config_kg_schema.json',root/'config_kg_units.tsv',root/'run_pipeline.sh',root/'run_mvp.sh']},
-         'input_sha256':{str(p.relative_to(root)):digest(p) for p in (root/'data').rglob('*') if p.is_file()}}
+         'input_sha256':{str(p.relative_to(root)):digest(p) for directory in ['raw','metadata','reference'] for p in (root/'data'/directory).glob('*') if p.is_file()},
+         'functional_reference_manifests':{str(p.relative_to(root)):digest(p) for p in (root/'data/reference/functional').glob('*/manifest.json') if p.is_file()}}
     manifest.update(status=args.status,updated_utc=datetime.now(timezone.utc).isoformat())
     manifest['source_sha256_at_status']={str(p.relative_to(root)):digest(p) for p in list((root/'scripts').glob('*.py'))+list((root/'scripts').glob('*.R'))+[root/'config_ngraph.R',root/'config_kg_schema.json',root/'config_kg_units.tsv',root/'run_pipeline.sh',root/'run_mvp.sh']}
     manifest['r_version']=subprocess.check_output([os.environ.get('RSCRIPT', '/maps/projects/caeg/people/gfx654/miniforge3/envs/ngraph/bin/Rscript'),'--version'],stderr=subprocess.STDOUT,text=True).strip()

@@ -56,6 +56,45 @@ SEED = 42
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
+TAXON_FEATURES = ["mean_clr", "sd_clr", "mean_abundance", "prevalence_samples", "prevalence_cores"]
+SITE_FEATURES = ["samples", "nodes", "edges", "density", "components", "age_min_kyr", "age_max_kyr", "age_mean_kyr"]
+
+
+def learner_taxon_tables(taxon_nodes, taxon_taxon, taxon_site):
+    """Keep inventories intact while restricting learning to association-supported taxa."""
+    known = set(taxon_nodes["taxon"].astype(str))
+    supported = set(taxon_taxon["taxon_from"].astype(str)) | set(taxon_taxon["taxon_to"].astype(str))
+    if not supported <= known:
+        raise ValueError("Taxon association endpoints are missing from the global inventory")
+    selected = taxon_nodes[taxon_nodes["taxon"].astype(str).isin(supported)].copy().reset_index(drop=True)
+    context = taxon_site[taxon_site["taxon"].astype(str).isin(supported)].copy().reset_index(drop=True)
+    return selected, context
+
+
+def cluster_taxon_embeddings(taxon_z, k_min=2, k_max=8):
+    if k_min < 2 or k_max < k_min:
+        raise ValueError("Module K bounds must satisfy 2 <= minimum <= maximum")
+    if len(taxon_z) < 3:
+        return np.zeros(len(taxon_z), dtype=int), 1, float("nan"), pd.DataFrame()
+    maximum = min(k_max, len(taxon_z) - 1)
+    minimum = min(k_min, maximum)
+    scores = []
+    best = None
+    for k in range(minimum, maximum + 1):
+        labels = KMeans(n_clusters=k, random_state=SEED, n_init="auto").fit_predict(taxon_z)
+        counts = pd.Series(labels).value_counts().sort_index()
+        valid = 1 < len(counts) < len(taxon_z)
+        score = float(silhouette_score(taxon_z, labels)) if valid else float("nan")
+        scores.append({"k": k, "silhouette": score, "realized_clusters": len(counts),
+                       "minimum_module_size": int(counts.min()), "maximum_module_size": int(counts.max()),
+                       "module_sizes_json": json.dumps({f"M{int(i)+1}": int(n) for i, n in counts.items()}),
+                       "status": "evaluated" if valid else "degenerate"})
+        if valid and (best is None or score > best[2]):
+            best = (labels, k, score)
+    if best is None:
+        raise ValueError("Every candidate module partition is degenerate")
+    return (*best, pd.DataFrame(scores))
+
 
 class RelationAwareVGAEEncoder(nn.Module):
     def __init__(self, in_channels: int, hidden_channels: int, latent_channels: int, num_relations: int):
@@ -137,14 +176,12 @@ def build_hetero_graph(
     site_site: pd.DataFrame,
     taxon_site: pd.DataFrame,
 ) -> Tuple[HeteroData, Dict[str, int], Dict[str, int], List[str], List[str]]:
-    taxon_features, taxon_cols = numeric_feature_frame(
-        taxon_nodes,
-        exclude=["threshold", "taxon_index"],
-    )
-    site_features, site_cols = numeric_feature_frame(
-        site_nodes,
-        exclude=["threshold", "method"],
-    )
+    missing = set(TAXON_FEATURES) - set(taxon_nodes.columns)
+    missing |= set(SITE_FEATURES) - set(site_nodes.columns)
+    if missing:
+        raise ValueError("Missing allowlisted model features: " + ", ".join(sorted(missing)))
+    taxon_features, taxon_cols = numeric_feature_frame(taxon_nodes[TAXON_FEATURES], exclude=[])
+    site_features, site_cols = numeric_feature_frame(site_nodes[SITE_FEATURES], exclude=[])
     feature_dim = max(taxon_features.shape[1], site_features.shape[1])
     if taxon_features.shape[1] < feature_dim:
         pad = feature_dim - taxon_features.shape[1]
@@ -251,7 +288,14 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
     if not combo_dir.exists():
         raise SystemExit(f"Missing deep-module export directory: {combo_dir}")
 
-    taxon_nodes, site_nodes, taxon_taxon, site_site, taxon_site, manifest = load_combo_tables(combo_dir)
+    global_taxon_nodes, site_nodes, taxon_taxon, site_site, taxon_site, manifest = load_combo_tables(combo_dir)
+    taxon_nodes, taxon_site = learner_taxon_tables(global_taxon_nodes, taxon_taxon, taxon_site)
+    if len(taxon_nodes) < 3:
+        raise ValueError("Too few association-supported taxa for module discovery")
+    mapping = pd.DataFrame({"taxon": taxon_nodes["taxon"].astype(str),
+                            "global_taxon_index": taxon_nodes["taxon_index"],
+                            "learner_taxon_index": np.arange(len(taxon_nodes))})
+    mapping.to_csv(combo_dir / "tables" / "vgae_learner_taxon_index.tsv", sep="\t", index=False)
     hetero, taxon_index, site_index, taxon_cols, site_cols = build_hetero_graph(
         taxon_nodes, site_nodes, taxon_taxon, site_site, taxon_site
     )
@@ -304,7 +348,11 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
         "evaluation": "transductive_unique_taxon_pair_reconstruction",
         "seed": SEED, "split": "80/10/10", "checkpoint_selection": "validation_only",
         "negative_policy": "fixed_disjoint_non_edges_excluding_all_known_positive_pairs",
-        "feature_fit": "all_exported_nodes_zscore_clipped_8",
+        "feature_fit": "all_learner_nodes_zscore_clipped_8",
+        "feature_policy": "annotation_free_explicit_allowlists",
+        "taxon_feature_columns": TAXON_FEATURES,
+        "site_feature_columns": SITE_FEATURES,
+        "global_taxa": len(global_taxon_nodes), "learner_taxa": taxon_count,
         "limitations": "Node/context features remain visible; not independent site generalization",
         "counts": {k: len(v) for k,v in splits.items()}}, indent=2))
 
@@ -366,26 +414,11 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
     taxon_z = z[:taxon_count].cpu().numpy()
     site_z = z[taxon_count:].cpu().numpy()
 
-    # Cluster taxon embeddings.
-    k_max = max(2, min(8, taxon_z.shape[0] - 1))
-    if taxon_z.shape[0] < 3:
-        clusters = np.zeros(taxon_z.shape[0], dtype=int)
-        chosen_k = 1
-        sil = float("nan")
-    else:
-        best_k = 2
-        best_sil = -math.inf
-        for k in range(min(int(os.environ.get("NG_MODULE_K_MIN", "2")), k_max), k_max + 1):
-            labels = KMeans(n_clusters=k, random_state=SEED, n_init="auto").fit_predict(taxon_z)
-            if len(set(labels)) < 2:
-                continue
-            score = silhouette_score(taxon_z, labels)
-            if score > best_sil:
-                best_sil = score
-                best_k = k
-        clusters = KMeans(n_clusters=best_k, random_state=SEED, n_init="auto").fit_predict(taxon_z)
-        chosen_k = best_k
-        sil = float(best_sil)
+    # Explore the complete configured K range; six modules are not imposed.
+    clusters, chosen_k, sil, k_search = cluster_taxon_embeddings(
+        taxon_z, int(os.environ.get("NG_MODULE_K_MIN", "2")), int(os.environ.get("NG_MODULE_K_MAX", "8")))
+    k_search.insert(0, "method", method); k_search.insert(0, "threshold", threshold)
+    k_search.to_csv(combo_dir / "tables" / "vgae_module_k_search.tsv", sep="\t", index=False)
 
     pca = PCA(n_components=2, random_state=SEED)
     coords = pca.fit_transform(taxon_z)
@@ -405,6 +438,16 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
     module_df["assignment_status"] = "exploratory_embedding_kmeans"
     module_df["module_count"] = chosen_k
     module_df["silhouette"] = sil
+    module_df["global_taxon_index"] = taxon_nodes["taxon_index"].to_numpy()
+    module_df["learner_taxon_index"] = np.arange(taxon_count)
+
+    statuses = global_taxon_nodes[["taxon", "taxon_index"]].rename(columns={"taxon_index": "global_taxon_index"}).copy()
+    statuses = statuses.merge(module_df[["taxon", "module_kmeans", "learner_taxon_index"]], on="taxon", how="left", validate="one_to_one")
+    prior = global_taxon_nodes.set_index("taxon").get("module_assignment_status", pd.Series(dtype=str))
+    statuses["assignment_status"] = statuses["taxon"].map(prior).fillna("unassigned_no_taxon_association_edges")
+    statuses.loc[statuses["module_kmeans"].notna(), "assignment_status"] = "exploratory_embedding_kmeans"
+    statuses["threshold"] = threshold; statuses["method"] = method
+    statuses.to_csv(combo_dir / "tables" / "vgae_taxon_assignment_status.tsv", sep="\t", index=False)
 
     emb_cols = [f"z_{i+1}" for i in range(taxon_z.shape[1])]
     embeddings = pd.DataFrame(taxon_z, columns=emb_cols)
@@ -434,6 +477,8 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
             "evaluation_scope": "transductive_unique_taxon_pairs",
             "module_k": chosen_k,
             "module_silhouette": sil,
+            "global_taxa": len(global_taxon_nodes), "assigned_taxa": taxon_count,
+            "unassigned_taxa": len(global_taxon_nodes) - taxon_count,
         },
         index=[0],
     )
@@ -448,6 +493,7 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 120) -> 
             "taxon_feature_columns": taxon_cols,
             "site_feature_columns": site_cols,
             "edge_type_map": train_edge_type_map,
+            "learner_taxon_ids": taxon_nodes["taxon"].astype(str).tolist(),
         },
         combo_dir / "models" / "vgae_model.pt",
     )

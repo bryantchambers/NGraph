@@ -43,10 +43,11 @@ write_combo_export <- function(thr, method) {
   taxa_meta_path <- file.path(matrix_dirs$tables, "ngraph_taxa_metadata.tsv")
   site_summary_path <- file.path(matrix_dirs$tables, "ngraph_site_graph_summary.tsv")
   super_edge_path <- file.path(matrix_dirs$tables, paste0("ngraph_super_graph_edges_", method, ".tsv"))
+  eligibility_path <- file.path(matrix_dirs$tables, "ngraph_taxon_core_eligibility.tsv")
 
   generic_abund <- file.path(matrix_dirs$matrices, "ngraph_tax_abundance_taxa_by_sample.rds")
   if (file.exists(generic_abund)) abund_path <- generic_abund
-  required <- c(clr_path, abund_path, sample_qc_path, taxa_meta_path, site_summary_path, super_edge_path)
+  required <- c(clr_path, abund_path, sample_qc_path, taxa_meta_path, site_summary_path, super_edge_path, eligibility_path)
   if (!all(file.exists(required))) {
     ng_log(LOG, "Skipping ", dirs$threshold, "/", method, ": missing source artifacts")
     return(NULL)
@@ -58,6 +59,8 @@ write_combo_export <- function(thr, method) {
   taxa_meta <- fread(taxa_meta_path)
   site_summary <- fread(site_summary_path)
   super_edges <- fread(super_edge_path)
+  eligibility <- fread(eligibility_path)
+  eligibility <- eligibility[eligible == TRUE & selected_for_graph == TRUE]
   taxa_meta <- unique(taxa_meta, by = "taxon")
 
   if (!identical(rownames(clr), colnames(abund)[match(rownames(clr), colnames(abund))])) {
@@ -105,7 +108,10 @@ write_combo_export <- function(thr, method) {
     prevalence_cores = rowSums(taxon_presence_cores, na.rm = TRUE) / length(NG_PARAMS$all_cores)
   )]
 
-  numeric_taxon_cols <- select_numeric(taxon_nodes, drop = c("threshold", "taxon_index"))
+  # Functional annotations stay inspectable metadata but never enter learners
+  # subsequently tested for functional enrichment.
+  numeric_taxon_cols <- c("mean_clr", "sd_clr", "mean_abundance", "prevalence_samples", "prevalence_cores")
+  numeric_site_cols <- c("samples", "nodes", "edges", "density", "components", "age_min_kyr", "age_max_kyr", "age_mean_kyr")
   taxon_nodes <- taxon_nodes[, c("taxon", "threshold", "taxon_index", setdiff(names(taxon_nodes), c("taxon", "threshold", "taxon_index"))), with = FALSE]
 
   selected_method <- method
@@ -161,6 +167,10 @@ write_combo_export <- function(thr, method) {
     if (!file.exists(edge_path)) next
     edges <- fread(edge_path)
     if (nrow(edges) == 0) next
+    qualified <- eligibility[core == core_id, taxon]
+    if (any(!edges$from %in% qualified | !edges$to %in% qualified)) {
+      stop("Site graph edge endpoints violate local eligibility: ", core_id)
+    }
     if (!"signed_weight" %in% names(edges)) {
       edges[, signed_weight := weight]
     }
@@ -177,7 +187,19 @@ write_combo_export <- function(thr, method) {
     )]
   }
   taxon_taxon_edges <- rbindlist(taxon_taxon_edges, fill = TRUE)
+  if (nrow(taxon_taxon_edges) == 0L) {
+    taxon_taxon_edges <- data.table(threshold = integer(), method = character(), source_core = character(),
+      relation = character(), edge_type = character(), from = character(), to = character(),
+      signed_weight = numeric(), weight = numeric(), abs_weight = numeric())
+  }
   setnames(taxon_taxon_edges, c("from", "to"), c("taxon_from", "taxon_to"))
+  connected_taxa <- union(taxon_taxon_edges$taxon_from, taxon_taxon_edges$taxon_to)
+  eligible_counts <- eligibility[, .(eligible_core_count = uniqueN(core)), by = taxon]
+  taxon_nodes <- merge(taxon_nodes, eligible_counts, by = "taxon", all.x = TRUE, sort = FALSE)
+  taxon_nodes[is.na(eligible_core_count), eligible_core_count := 0L]
+  taxon_nodes[, module_assignment_status := fifelse(taxon %in% connected_taxa, "edge_supported",
+    fifelse(eligible_core_count == 0L, "unassigned_insufficient_local_support", "unassigned_no_taxon_association_edges"))]
+  setorder(taxon_nodes, taxon_index)
 
   site_site_edges <- copy(super_edges)
   if (nrow(site_site_edges) > 0) {
@@ -208,7 +230,8 @@ write_combo_export <- function(thr, method) {
       prevalence = rowMeans(abund_core > 0, na.rm = TRUE),
       mean_tax_abundance = rowMeans(abund_core, na.rm = TRUE)
     )
-    edge_dt <- edge_dt[is.finite(prevalence) & prevalence > 0]
+    qualified <- eligibility[core == core_id, taxon]
+    edge_dt <- edge_dt[taxon %in% qualified & is.finite(prevalence) & prevalence > 0]
     edge_dt[, edge_type := "taxon_site_context"]
     taxon_site_edges[[length(taxon_site_edges) + 1]] <- edge_dt
   }
@@ -234,10 +257,13 @@ write_combo_export <- function(thr, method) {
       sample_qc = sample_qc_path,
       taxa_metadata = taxa_meta_path,
       site_summary = site_summary_path,
-      super_graph_edges = super_edge_path
+      super_graph_edges = super_edge_path,
+      local_taxon_eligibility = eligibility_path
     ),
     nodes = list(
       taxon = nrow(taxon_nodes),
+      learner_taxon = length(connected_taxa),
+      unassigned_taxon = nrow(taxon_nodes) - length(connected_taxa),
       site = nrow(site_nodes)
     ),
     edges = list(
@@ -247,8 +273,12 @@ write_combo_export <- function(thr, method) {
     ),
     feature_columns = list(
       taxon_numeric = numeric_taxon_cols,
-      site_numeric = select_numeric(site_nodes, drop = c("threshold", "method"))
+      site_numeric = numeric_site_cols
     ),
+    feature_policy = "annotation_free_explicit_allowlists",
+    clr_reference = "fixed_global_retained_taxa",
+    local_min_positive_samples = as.integer(Sys.getenv("NG_LOCAL_MIN_POSITIVE_SAMPLES", "5")),
+    local_prevalence_fraction = as.numeric(Sys.getenv("NG_LOCAL_PREVALENCE_FRACTION", "0")),
     direct_relations = c("taxon_taxon", "site_similarity", "taxon_site_context")
   )
   write_json(manifest, file.path(dirs$tables, "heterograph_manifest.json"), auto_unbox = TRUE, pretty = TRUE)

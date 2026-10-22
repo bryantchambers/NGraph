@@ -427,6 +427,22 @@ def main() -> int:
             logger.info("Skipping %s/%s: incomplete deep-module inputs", threshold, method)
             continue
 
+        # The KG inventory retains unsupported taxa, while learned hypotheses
+        # require a real embedding. Never fabricate embeddings for unassigned
+        # inventory members or send their context edges into calibration.
+        learned_taxa = set(payload["embeddings"].loc[
+            payload["embeddings"]["node_type"] == "taxon", "node_id"].astype(str))
+        inventory_size = len(payload["taxon_nodes"])
+        payload["taxon_nodes"] = payload["taxon_nodes"].loc[
+            payload["taxon_nodes"]["taxon"].astype(str).isin(learned_taxa)].copy()
+        payload["taxon_site"] = payload["taxon_site"].loc[
+            payload["taxon_site"]["taxon"].astype(str).isin(learned_taxa)].copy()
+        if not (payload["taxon_taxon"]["taxon_from"].astype(str).isin(learned_taxa).all()
+                and payload["taxon_taxon"]["taxon_to"].astype(str).isin(learned_taxa).all()):
+            raise ValueError("Taxon association endpoint lacks a learned embedding")
+        logger.info("%s/%s scoring %d learned taxa; %d unassigned inventory taxa excluded",
+                    threshold, method, len(learned_taxa), inventory_size-len(payload["taxon_nodes"]))
+
         taxon_taxon_scores = build_taxon_taxon_scores(
             payload["taxon_nodes"],
             payload["taxon_taxon"],

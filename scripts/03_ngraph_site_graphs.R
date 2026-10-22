@@ -24,6 +24,33 @@ if (minet_available) {
   ng_log(LOG, "Optional method skipped: minet is not installed; MI/ARACNE graphs were not built")
 }
 
+# Eligibility uses positive modeled abundance, never variance induced solely by
+# the sample-wise CLR denominator. The original global CLR reference is kept.
+local_taxon_eligibility <- function(clr, abundance, samples, core_id, min_positive = 5L, min_fraction = 0) {
+  if (min_positive < 1L || !is.finite(min_fraction) || min_fraction < 0 || min_fraction > 1) {
+    stop("Invalid local positive-abundance eligibility settings")
+  }
+  if (!all(samples %in% rownames(clr)) || !all(samples %in% colnames(abundance)) ||
+      !all(colnames(clr) %in% rownames(abundance))) stop("CLR/abundance identifiers do not align")
+  mat <- clr[samples, , drop = FALSE]
+  raw <- abundance[colnames(mat), samples, drop = FALSE]
+  required <- max(as.integer(min_positive), ceiling(min_fraction * length(samples)))
+  finite_clr <- colSums(!is.finite(mat)) == 0L
+  finite_raw <- rowSums(!is.finite(raw)) == 0L
+  clr_var <- apply(mat, 2, var, na.rm = TRUE)
+  raw_var <- apply(raw, 1, var, na.rm = TRUE)
+  positive <- rowSums(is.finite(raw) & raw > 0)
+  reason <- fifelse(!finite_clr | !finite_raw, "nonfinite_profile",
+                    fifelse(positive < required, "insufficient_local_positive_samples",
+                            fifelse(!is.finite(clr_var) | clr_var <= 0, "constant_clr_profile", "eligible")))
+  data.table(taxon = colnames(mat), core = core_id, n_positive_samples = as.integer(positive),
+             n_core_samples = length(samples), min_positive_samples = required,
+             clr_variance = as.numeric(clr_var), raw_abundance_variance = as.numeric(raw_var),
+             constant_raw_abundance = is.finite(raw_var) & raw_var == 0,
+             eligible = reason == "eligible", exclusion_reason = reason,
+             selected_for_graph = FALSE)
+}
+
 build_correlation_edges <- function(mat, thr, method_suffix, method_label, method_name, threshold_value) {
   if (method_name == "bicor") {
     cor_mat <- suppressWarnings(WGCNA::bicor(
@@ -103,18 +130,28 @@ all_summaries <- list()
 for (thr in NG_PARAMS$prevalence_thresholds) {
   dirs <- ng_threshold_dirs(thr)
   clr <- readRDS(file.path(dirs$matrices, "ngraph_clr_global.rds"))
+  abundance_path <- file.path(dirs$matrices, "ngraph_tax_abundance_taxa_by_sample.rds")
+  if (!file.exists(abundance_path)) abundance_path <- file.path(dirs$matrices, "ngraph_tax_abund_tad_taxa_by_sample.rds")
+  abundance <- readRDS(abundance_path)
   sample_qc <- fread(file.path(dirs$tables, "ngraph_sample_qc.tsv"))
   taxa_meta <- fread(file.path(dirs$tables, "ngraph_taxa_metadata.tsv"))
 
   graph_summaries <- list()
+  eligibility_summaries <- list()
   for (core_id in NG_PARAMS$all_cores) {
     samples <- intersect(sample_qc[core == core_id, label], rownames(clr))
+    eligibility <- local_taxon_eligibility(clr, abundance, samples, core_id,
+      min_positive = as.integer(Sys.getenv("NG_LOCAL_MIN_POSITIVE_SAMPLES", "5")),
+      min_fraction = as.numeric(Sys.getenv("NG_LOCAL_PREVALENCE_FRACTION", "0")))
+    eligibility[, threshold := thr]
     if (length(samples) < NG_PARAMS$graph_min_samples) {
+      eligibility[, `:=`(eligible = FALSE, exclusion_reason = "insufficient_core_samples")]
+      eligibility_summaries[[length(eligibility_summaries) + 1]] <- eligibility
       ng_log(LOG, "Threshold ", thr, " skipping ", core_id, ": fewer than ", NG_PARAMS$graph_min_samples, " samples")
       next
     }
 
-    mat <- clr[samples, , drop = FALSE]
+    mat <- clr[samples, eligibility[eligible == TRUE, taxon], drop = FALSE]
     if (Sys.getenv("NG_TAD_SUPPORTED_ONLY", "false") == "true") {
       tad <- readRDS(file.path(dirs$matrices, "ngraph_tax_abund_tad_taxa_by_sample.rds"))
       supported <- rownames(tad)[rowSums(tad[, samples, drop = FALSE] > 0) > 0]
@@ -123,6 +160,12 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     vars <- apply(mat, 2, var, na.rm = TRUE)
     top_taxa <- names(sort(vars, decreasing = TRUE))[seq_len(min(NG_PARAMS$graph_top_variable_taxa, length(vars)))]
     mat <- mat[, top_taxa, drop = FALSE]
+    eligibility[taxon %in% top_taxa, selected_for_graph := TRUE]
+    eligibility_summaries[[length(eligibility_summaries) + 1]] <- eligibility
+    if (ncol(mat) < 2L) {
+      ng_log(LOG, "Threshold ", thr, " skipping ", core_id, ": fewer than two eligible variable taxa")
+      next
+    }
 
     vertices <- data.table(name = colnames(mat), taxon = colnames(mat))
     vertices <- merge(vertices, taxa_meta, by = "taxon", all.x = TRUE, sort = FALSE)
@@ -193,6 +236,8 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
   }
 
   summary_dt <- rbindlist(graph_summaries, fill = TRUE)
+  fwrite(rbindlist(eligibility_summaries, fill = TRUE),
+         file.path(dirs$tables, "ngraph_taxon_core_eligibility.tsv"), sep = "\t")
   fwrite(summary_dt, file.path(dirs$tables, "ngraph_site_graph_summary.tsv"), sep = "\t")
   all_summaries[[length(all_summaries) + 1]] <- summary_dt
 

@@ -856,6 +856,14 @@ kg_manifest <- list(
   )
 )
 write_json(kg_manifest, file.path(kg_dirs$root, "kg_manifest.json"), auto_unbox = TRUE, pretty = TRUE)
+# A rebuilt substrate supersedes an older functional projection; retain its selection.
+active_pointer <- file.path(kg_dirs$root, "active_snapshot.json")
+if (file.exists(active_pointer)) {
+  history_dir <- file.path(kg_dirs$root, "selection_history")
+  dir.create(history_dir, recursive = TRUE, showWarnings = FALSE)
+  if (!file.copy(active_pointer, file.path(history_dir, paste0("before_import_", format(Sys.time(), "%Y%m%dT%H%M%OS6"), ".json")))) stop("Could not preserve prior KG snapshot selection")
+  unlink(active_pointer)
+}
 
 report_path <- file.path(kg_dirs$reports, "KG_SCHEMA_AND_IMPORT_REPORT.md")
 report_text <- c(

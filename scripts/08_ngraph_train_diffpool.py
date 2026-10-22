@@ -50,6 +50,19 @@ SEED = 42
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
+TAXON_FEATURES = ["mean_clr", "sd_clr", "mean_abundance", "prevalence_samples", "prevalence_cores"]
+SITE_FEATURES = ["samples", "nodes", "edges", "density", "components", "age_min_kyr", "age_max_kyr", "age_mean_kyr"]
+CONTEXT_FEATURES = ["mean_clr", "sd_clr", "mean_abs_clr", "max_abs_clr", "temporal_var_clr", "prevalence", "mean_tax_abundance"]
+
+
+def learner_taxon_tables(taxon_nodes, taxon_taxon, taxon_site):
+    supported = set(taxon_taxon["taxon_from"].astype(str)) | set(taxon_taxon["taxon_to"].astype(str))
+    if not supported <= set(taxon_nodes["taxon"].astype(str)):
+        raise ValueError("Taxon association endpoints are missing from the global inventory")
+    selected = taxon_nodes[taxon_nodes["taxon"].astype(str).isin(supported)].copy().reset_index(drop=True)
+    context = taxon_site[taxon_site["taxon"].astype(str).isin(supported)].copy().reset_index(drop=True)
+    return selected, context
+
 
 class DenseGraphBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int):
@@ -138,8 +151,8 @@ def build_site_graphs(
     site_site: pd.DataFrame,
     taxon_site: pd.DataFrame,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[str], List[str], Dict[Tuple[str, str], float]]:
-    taxon_features, taxon_cols = numeric_feature_frame(taxon_nodes, exclude=["threshold", "taxon_index"])
-    site_features, site_cols = numeric_feature_frame(site_nodes, exclude=["threshold", "method"])
+    taxon_features, taxon_cols = numeric_feature_frame(taxon_nodes[TAXON_FEATURES], exclude=[])
+    site_features, site_cols = numeric_feature_frame(site_nodes[SITE_FEATURES], exclude=[])
     taxon_order = taxon_nodes["taxon"].astype(str).tolist()
     site_order = site_nodes["core"].astype(str).tolist()
     taxon_index = {name: i for i, name in enumerate(taxon_order)}
@@ -149,10 +162,8 @@ def build_site_graphs(
         a, b = str(row.site_from), str(row.site_to)
         edge_weight_lookup[tuple(sorted((a, b)))] = float(row.weight)
 
-    feature_cols = [c for c in taxon_site.columns if c not in {"threshold", "method", "core", "taxon", "edge_type"} and pd.api.types.is_numeric_dtype(taxon_site[c])]
-    if not feature_cols:
-        raise SystemExit("No numeric taxon-site feature columns were found.")
-    taxon_site = taxon_site.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    feature_cols = CONTEXT_FEATURES
+    taxon_site = taxon_site.copy().replace([np.inf, -np.inf], np.nan).fillna(0.0)
     context = taxon_site[feature_cols].astype(float)
     taxon_site[feature_cols] = ((context - context.mean()) / context.std(ddof=0).replace(0.0, 1.0)).clip(-8.0, 8.0)
 
@@ -185,7 +196,9 @@ def build_site_graphs(
             i = taxon_index.get(str(row.taxon_from))
             j = taxon_index.get(str(row.taxon_to))
             if i is None or j is None:
-                continue
+                raise ValueError("Association endpoints are missing from the learner inventory")
+            if mask[site_pos, i] <= 0 or mask[site_pos, j] <= 0:
+                raise ValueError("Association endpoints lack qualified local context")
             w = float(row.abs_weight) / max_weight
             adjacency[site_pos, i, j] = max(adjacency[site_pos, i, j], w)
             adjacency[site_pos, j, i] = max(adjacency[site_pos, j, i], w)
@@ -232,7 +245,13 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 160) -> 
     if not combo_dir.exists():
         raise SystemExit(f"Missing deep-module export directory: {combo_dir}")
 
-    taxon_nodes, site_nodes, taxon_taxon, site_site, taxon_site, manifest = load_combo_tables(combo_dir)
+    global_taxon_nodes, site_nodes, taxon_taxon, site_site, taxon_site, manifest = load_combo_tables(combo_dir)
+    taxon_nodes, taxon_site = learner_taxon_tables(global_taxon_nodes, taxon_taxon, taxon_site)
+    if len(taxon_nodes) < 3:
+        raise ValueError("Too few association-supported taxa for DiffPool")
+    pd.DataFrame({"taxon": taxon_nodes["taxon"].astype(str), "global_taxon_index": taxon_nodes["taxon_index"],
+                  "learner_taxon_index": np.arange(len(taxon_nodes))}).to_csv(
+        combo_dir / "tables" / "diffpool_learner_taxon_index.tsv", sep="\t", index=False)
     x, adj, mask, site_features, taxon_order, site_order, site_weights = build_site_graphs(
         taxon_nodes, site_nodes, taxon_taxon, site_site, taxon_site
     )
@@ -318,8 +337,9 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 160) -> 
             "method": method,
             "taxon": taxon_order,
             "consensus_module": [f"M{int(v) + 1}" for v in consensus_module],
-            "mean_assignment_entropy": assignment_entropy.mean(axis=0),
+            "mean_assignment_entropy": (assignment_entropy * presence_mask).sum(axis=0) / np.maximum(presence_mask.sum(axis=0), 1),
             "sites_present": mask.cpu().numpy().sum(axis=0).astype(int),
+            "assignment_status": "exploratory_diffpool_context_and_association",
         }
     )
 
@@ -341,6 +361,12 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 160) -> 
     history_df.to_csv(combo_dir / "tables" / "diffpool_training_history.tsv", sep="\t", index=False)
     module_df.to_csv(combo_dir / "tables" / "diffpool_site_taxon_assignments.tsv", sep="\t", index=False)
     consensus_df.to_csv(combo_dir / "tables" / "diffpool_consensus_modules.tsv", sep="\t", index=False)
+    statuses = global_taxon_nodes[["taxon", "taxon_index"]].rename(columns={"taxon_index": "global_taxon_index"}).copy()
+    statuses = statuses.merge(consensus_df[["taxon", "consensus_module"]], on="taxon", how="left", validate="one_to_one")
+    prior = global_taxon_nodes.set_index("taxon").get("module_assignment_status", pd.Series(dtype=str))
+    statuses["assignment_status"] = statuses["taxon"].map(prior).fillna("unassigned_no_taxon_association_edges")
+    statuses.loc[statuses["consensus_module"].notna(), "assignment_status"] = "exploratory_diffpool_context_and_association"
+    statuses.to_csv(combo_dir / "tables" / "diffpool_taxon_assignment_status.tsv", sep="\t", index=False)
     site_summary_df.to_csv(combo_dir / "tables" / "diffpool_site_summary.tsv", sep="\t", index=False)
 
     torch.save(
@@ -353,6 +379,10 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 160) -> 
             "feature_dim": n_feat,
             "taxon_order": taxon_order,
             "site_order": site_order,
+            "taxon_feature_columns": TAXON_FEATURES,
+            "site_feature_columns": SITE_FEATURES,
+            "context_feature_columns": CONTEXT_FEATURES,
+            "feature_policy": "annotation_free_explicit_allowlists",
         },
         combo_dir / "models" / "diffpool_model.pt",
     )
@@ -390,6 +420,7 @@ def train_combo(branch: str, threshold: str, method: str, epochs: int = 160) -> 
                 "assign_dim_2": assign_dim_2,
                 "n_taxa": n_taxa,
                 "n_sites": n_sites,
+                "global_taxa": len(global_taxon_nodes), "unassigned_taxa": len(global_taxon_nodes) - n_taxa,
             }
         ]
     )

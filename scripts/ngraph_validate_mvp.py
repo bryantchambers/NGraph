@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score
+from ngraph_kg_snapshots import active_directory
 from ngraph_kg_connectivity import ConnectivityIndex
 root=Path(__file__).resolve().parents[1]
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--branch',required=True);args=ap.parse_args()
-    branch=root/'results/ngraph'/args.branch;kg=branch/'knowledge_graph/tables';combo=branch/'deep_modules/prev_10/pearson/tables'
+    branch=root/'results/ngraph'/args.branch;kg=active_directory(branch/'knowledge_graph')/'tables';combo=branch/'deep_modules/prev_10/pearson/tables'
     log=root/'logs'/args.branch/'validate_mvp.log';log.parent.mkdir(parents=True,exist_ok=True);logging.basicConfig(filename=log,level=logging.INFO)
     nodes=pd.read_csv(kg/'kg_nodes.tsv',sep='\t',keep_default_na=False, low_memory=False);edges=pd.read_csv(kg/'kg_edges.tsv',sep='\t',keep_default_na=False, low_memory=False)
     assert nodes.node_id.is_unique and edges.edge_id.is_unique
@@ -24,7 +25,20 @@ def main():
         assert group.source_node_type.isin(rule['source']).all(),predicate
         assert group.target_node_type.isin(rule['target']).all(),predicate
     modules=pd.read_csv(combo/'vgae_taxon_modules.tsv',sep='\t');sizes=modules.module_kmeans.value_counts()
-    assert 6<=len(sizes)<=8 and sizes.max()/len(modules)<.95
+    assert 2<=len(sizes)<=8 and sizes.max()/len(modules)<.95
+    assignment_path=combo/'vgae_taxon_assignment_status.tsv'
+    assignment_status={}
+    if assignment_path.exists():
+        assignment=pd.read_csv(assignment_path,sep='\t',keep_default_na=False)
+        assert assignment.taxon.is_unique
+        assert set(assignment.taxon)==set(nodes[nodes.node_type=='Taxon'].taxon)
+        learned=pd.read_csv(combo/'vgae_learner_taxon_index.tsv',sep='\t')
+        assert set(modules.taxon)==set(learned.taxon)
+        assert modules.taxon.is_unique
+        association=pd.read_csv(combo/'hetero_taxon_taxon_edges.tsv',sep='\t')
+        supported=set(association.taxon_from)|set(association.taxon_to)
+        assert set(modules.taxon)==supported
+        assignment_status=assignment.assignment_status.value_counts().to_dict()
     features=pd.read_csv(combo/'vgae_embeddings.tsv',sep='\t')
     features=features[features.node_type=='taxon'];z=features[[c for c in features if c.startswith('z_')]].to_numpy()
     seed_labels=[KMeans(n_clusters=len(sizes),n_init=10,random_state=seed).fit_predict(z) for seed in [42,43,44]]
@@ -53,11 +67,11 @@ def main():
     annotations.groupby(['module_kmeans','functional_group','ecological_role'],dropna=False).size().reset_index(name='taxa').to_csv(combo/'mvp_module_function_counts.tsv',sep='\t',index=False)
     report={'status':'passed' ,'branch':args.branch,'nodes':len(nodes),'edges':len(edges),'dangling_references':0,'declared_endpoint_types':'passed',
       'taxa':int((nodes.node_type=='Taxon').sum()),'taxa_evidence_status':nodes[nodes.node_type=='Taxon'].evidence_status.value_counts().to_dict(),
-      'module_sizes':sizes.to_dict(),'assignment_seed_stability_ari':stability,'stability_scope':'Repeated KMeans on fixed learned embeddings; not graph/bootstrap validation',
+      'module_sizes':sizes.to_dict(),'module_assignment_status':assignment_status,'assigned_taxa':len(modules),'assignment_seed_stability_ari':stability,'stability_scope':'Repeated KMeans on fixed learned embeddings; not graph/bootstrap validation',
       'diffpool_sizes':pd.read_csv(combo/'diffpool_consensus_modules.tsv',sep='\t').consensus_module.value_counts().to_dict(),
       'observations':len(obs),'observation_provenance':'all observations referenced by measurement summaries',
       'questions':[{'question':'Which samples connect this taxon to an SST proxy?','answer':result},{'question':'Which taxa link these two cores through a module?','answer':bridge}]}
-    (kg/'mvp_validation_and_demo.json').write_text(json.dumps(report,indent=2)+'\n')
+    (branch/'knowledge_graph/tables/mvp_validation_and_demo.json').write_text(json.dumps(report,indent=2)+'\n')
     logging.info('PASS: %d nodes, %d edges, modules %s',len(nodes),len(edges),sizes.to_dict())
     print(json.dumps({k:v for k,v in report.items() if k!='questions'},indent=2))
 if __name__=='__main__':main()

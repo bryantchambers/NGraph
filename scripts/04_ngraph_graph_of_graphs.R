@@ -23,7 +23,7 @@ edge_key <- function(edges) {
 
 laplacian_signature <- function(g, k) {
   if (vcount(g) < 2 || ecount(g) == 0) {
-    return(rep(0, k))
+    return(rep(NA_real_, k))
   }
   adj <- as.matrix(as_adjacency_matrix(g, attr = "weight", sparse = FALSE))
   deg <- rowSums(adj)
@@ -33,6 +33,34 @@ laplacian_signature <- function(g, k) {
   diag(lap)[deg == 0] <- 0
   ev <- sort(Re(eigen(lap, symmetric = TRUE, only.values = TRUE)$values))
   as.numeric(quantile(ev, probs = seq(0, 1, length.out = k), na.rm = TRUE, names = FALSE, type = 7))
+}
+
+compare_graph_pair <- function(g_a, g_b, k) {
+  shared <- intersect(V(g_a)$name, V(g_b)$name)
+  full_a <- edge_key(as_data_frame(g_a, what = "edges"))
+  full_b <- edge_key(as_data_frame(g_b, what = "edges"))
+  full_union <- length(union(full_a, full_b))
+  full_jaccard <- if (full_union > 0) length(intersect(full_a, full_b)) / full_union else NA_real_
+  a <- induced_subgraph(g_a, vids = shared)
+  b <- induced_subgraph(g_b, vids = shared)
+  ea <- edge_key(as_data_frame(a, what = "edges"))
+  eb <- edge_key(as_data_frame(b, what = "edges"))
+  inter <- length(intersect(ea, eb)); uni <- length(union(ea, eb))
+  comparable <- length(shared) >= 2L && ecount(a) > 0L && ecount(b) > 0L
+  jaccard <- if (comparable) inter / uni else NA_real_
+  spectral_distance <- if (comparable) sqrt(sum((laplacian_signature(a, k) - laplacian_signature(b, k))^2)) else NA_real_
+  full_distance <- sqrt(sum((laplacian_signature(g_a, k) - laplacian_signature(g_b, k))^2))
+  data.table(nodes_a = vcount(g_a), nodes_b = vcount(g_b), shared_eligible_nodes = length(shared),
+    eligible_node_jaccard = if (length(union(V(g_a)$name, V(g_b)$name)) > 0)
+      length(shared) / length(union(V(g_a)$name, V(g_b)$name)) else NA_real_,
+    shared_edges_a = ecount(a), shared_edges_b = ecount(b),
+    shared_edge_fraction_a = if (ecount(g_a) > 0) ecount(a) / ecount(g_a) else NA_real_,
+    shared_edge_fraction_b = if (ecount(g_b) > 0) ecount(b) / ecount(g_b) else NA_real_,
+    edge_intersection = inter, edge_union = uni, edge_jaccard = jaccard,
+    spectral_distance = spectral_distance, spectral_similarity = 1 / (1 + spectral_distance),
+    full_edge_jaccard = full_jaccard, full_spectral_distance = full_distance,
+    full_spectral_similarity = 1 / (1 + full_distance),
+    comparison_status = if (comparable) "shared_eligible_nodes" else "insufficient_shared_edge_support")
 }
 
 all_sim <- list()
@@ -52,34 +80,18 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
     }
 
     graphs <- lapply(graph_files, readRDS)
-    edge_sets <- lapply(names(graph_files), function(core_id) {
-      fread(file.path(dirs$graphs, paste0("ngraph_edges_", core_id, "_", method_suffix, ".tsv")))
-    })
-    names(edge_sets) <- names(graph_files)
-    edge_sets <- lapply(edge_sets, edge_key)
-
-    signatures <- lapply(graphs, laplacian_signature, k = NG_PARAMS$spectral_k)
     pairs <- CJ(core_a = names(graphs), core_b = names(graphs))[core_a < core_b]
     sim <- rbindlist(lapply(seq_len(nrow(pairs)), function(i) {
       a <- pairs$core_a[i]
       b <- pairs$core_b[i]
-      inter <- length(intersect(edge_sets[[a]], edge_sets[[b]]))
-      uni <- length(union(edge_sets[[a]], edge_sets[[b]]))
-      jaccard <- ifelse(uni == 0, NA_real_, inter / uni)
-      spectral_distance <- sqrt(sum((signatures[[a]] - signatures[[b]])^2))
-      data.table(
+      cbind(data.table(
         threshold = thr,
         method = method_suffix,
         core_a = a,
-        core_b = b,
-        edge_intersection = inter,
-        edge_union = uni,
-        edge_jaccard = jaccard,
-        spectral_distance = spectral_distance,
-        spectral_similarity = 1 / (1 + spectral_distance)
-      )
+        core_b = b), compare_graph_pair(graphs[[a]], graphs[[b]], NG_PARAMS$spectral_k))
     }))
     sim[, super_weight := rowMeans(cbind(edge_jaccard, spectral_similarity), na.rm = TRUE)]
+    sim[!is.finite(super_weight), super_weight := NA_real_]
     sim_by_threshold[[length(sim_by_threshold) + 1]] <- sim
 
     super_edges <- data.table(
@@ -91,6 +103,7 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
       edge_jaccard = sim$edge_jaccard,
       spectral_similarity = sim$spectral_similarity
     )
+    super_edges <- super_edges[is.finite(weight) & weight > 0]
     super_edge_cols <- c("from", "to", setdiff(names(super_edges), c("from", "to")))
     super_edges <- super_edges[, ..super_edge_cols]
     super_nodes <- data.table(name = names(graphs), core = names(graphs), method = method_suffix, threshold = thr)
@@ -138,7 +151,7 @@ for (thr in NG_PARAMS$prevalence_thresholds) {
   cat("- Generated: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n", sep = "")
   cat("- Branch: `", NG$branch, "`\n", sep = "")
   cat("- Prevalence threshold: `", thr, "`\n", sep = "")
-  cat("- Edge weight: mean of edge-Jaccard similarity and normalized-Laplacian spectral-quantile similarity.\n\n")
+    cat("- Edge weight: mean of edge-Jaccard and normalized-Laplacian spectral-quantile similarity on pairwise shared eligible taxa. Empty comparisons remain unavailable; full-set metrics and overlap coverage are diagnostics.\n\n")
   cat(ng_md_table(sim_dt))
   sink()
 }
