@@ -8,6 +8,7 @@ const out=process.argv[2]||'/tmp/ngraph-gemini-console';fs.mkdirSync(out,{recurs
  try{
   const page=await browser.newPage();page.setDefaultTimeout(85000);await page.setViewport({width:1500,height:1100});const errors=[],checks=[];
   page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/query',{waitUntil:'networkidle0'});
+  assert.equal(await page.$eval('#query-provider',e=>e.value),'gemini');checks.push('Query defaults to configured Gemini provider');
   async function ask(question){
    await page.evaluate(()=>{saveConversation([]);showConversation();});await page.select('#query-provider','gemini');await page.$eval('#query-input',(e,q)=>e.value=q,question);
    const pending=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/query'&&r.request().method()==='POST');await page.click('#query-submit');
@@ -18,6 +19,7 @@ const out=process.argv[2]||'/tmp/ngraph-gemini-console';fs.mkdirSync(out,{recurs
   fs.writeFileSync(out+'/general.json',JSON.stringify(r.data,null,2));await page.screenshot({path:out+'/general.png',fullPage:true});
   r=await ask('Which functions are associated with module M3?');assert.equal(r.data.llm_status,'validated');assert.match(r.turn.answer,/M00091/);checks.push('functional Gemini question renders validated answer');
   fs.writeFileSync(out+'/functional.json',JSON.stringify(r.data,null,2));await page.screenshot({path:out+'/functional.png',fullPage:true});
+  r=await ask('What taxa work together to transition from glacial to interglacial periods?');assert.equal(r.data.llm_status,'evidence_checked');assert.equal(r.data.resolution_status,'analysis_unavailable');assert(r.data.llm_evidence_ids.length);checks.push('climate limitation renders cited Gemini explanation without claiming analysis exists');fs.writeFileSync(out+'/climate.json',JSON.stringify(r.data,null,2));await page.screenshot({path:out+'/climate.png',fullPage:true});
   await page.setRequestInterception(true);
   const handler=req=>{if(new URL(req.url()).pathname==='/api/query')req.respond({status:200,contentType:'application/json',body:JSON.stringify({llm_status:'output_truncated',llm_answer:'',answer_lines:['Recorded local evidence'],retrieved_cards:[]})});else req.continue();};
   page.on('request',handler);

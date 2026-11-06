@@ -124,7 +124,7 @@ def normalize_series(series: pd.Series) -> pd.Series:
 
 
 def parse_age_kya(query: str) -> Optional[float]:
-    match = re.search(r"(\d+(?:\.\d+)?)\s*kya", query.lower())
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:kya|kyr|ka)\b", query.lower())
     return float(match.group(1)) if match else None
 
 
@@ -208,19 +208,19 @@ def build_seed_answer(query: str, data: dict) -> dict:
     link_prediction = data["link_prediction"]
 
     cores = data["sample_qc"]["core"].dropna().astype(str).unique().tolist()
-    core = parse_core(query, cores) or "GeoB25202_R1"
-    age_target = parse_age_kya(query) or 150.0
+    explicit_core=re.search(r"\bcore\s+([A-Za-z0-9_]+)",query,re.I)
+    core = parse_core(query, cores) or (explicit_core[1] if explicit_core else "GeoB25202_R1")
+    age_target = parse_age_kya(query)
+    age_target = 150.0 if age_target is None else age_target
     if "sample" not in sample_abundance.columns and "label" in sample_abundance.columns:
         sample_abundance = sample_abundance.rename(columns={"label": "sample"})
     selected = sample_qc[(sample_qc["core"].astype(str) == core) & (sample_qc["age_kyr"].sub(age_target).abs() <= 10.0)].copy()
-    if selected.empty:
-        selected = sample_qc[sample_qc["core"].astype(str) == core].copy()
-    if selected.empty:
-        selected = sample_qc.nsmallest(5, "age_kyr").copy()
 
     selected_samples = selected["sample" if "sample" in selected.columns else "label"].astype(str).tolist()
     abund = sample_abundance[sample_abundance["sample"].isin(selected_samples)].copy()
-    abundance_scores = abund.groupby("taxon")["abundance"].mean().rename("mean_abundance").to_frame()
+    # Missing taxon/sample combinations are zeros, not missing observations.
+    abund = abund.groupby(["sample", "taxon"],as_index=False)["abundance"].sum()
+    abundance_scores = (abund.groupby("taxon")["abundance"].sum() / max(1,len(selected_samples))).rename("mean_abundance").to_frame()
     abundance_scores["presence_count"] = abund.groupby("taxon")["abundance"].apply(lambda x: (x > 0).sum())
     abundance_scores = abundance_scores.fillna(0.0)
 
@@ -238,10 +238,11 @@ def build_seed_answer(query: str, data: dict) -> dict:
             link_deg.index.name = "taxon"
         link_deg = link_deg.reset_index()
 
+    abundance_scores = abundance_scores[abundance_scores["presence_count"] > 0]
     ranked = abundance_scores.reset_index().rename(columns={"index": "taxon"})
     ranked = ranked.merge(link_deg, on="taxon", how="left")
     ranked = ranked.merge(taxon_nodes[[c for c in ["taxon", "functional_group", "ecological_role", "tea_primary", "guild_tier", "vgae_module", "diffpool_module"] if c in taxon_nodes.columns]], on="taxon", how="left")
-    ranked["predicted_link_degree"] = ranked["predicted_link_degree"].fillna(0)
+    ranked["predicted_link_degree"] = pd.to_numeric(ranked["predicted_link_degree"],errors="coerce").fillna(0)
     ranked["combined_score"] = (
         0.6 * normalize_series(ranked["mean_abundance"]) +
         0.2 * normalize_series(ranked["presence_count"]) +
@@ -249,14 +250,38 @@ def build_seed_answer(query: str, data: dict) -> dict:
     )
     ranked = ranked.sort_values("combined_score", ascending=False)
 
-    top_taxa = ranked.head(100).copy()
+    requested=re.search(r'\btop\s+(\d+)\s+(?:taxa|species)\b',query,re.I)
+    requested_count=min(1000,max(1,int(requested[1]))) if requested else 100
+    top_taxa = ranked.head(requested_count).copy()
+    top_taxa.insert(0,"rank",np.arange(1,len(top_taxa)+1))
+    top_taxa=top_taxa[["rank","taxon","mean_abundance","presence_count","predicted_link_degree","combined_score"]]
     semantic_hits = semantic_context(cards, data["card_matrix"], data["vectorizer"], query, top_k=10)
     answer_lines = [
-        f"I used core {core} samples within approximately {age_target:.1f} kya, with a ±10 kya window when possible.",
-        "Taxa were ranked by mean abundance in the selected samples, presence count, and learned-link support.",
+        f"Historical analogue: core {core}, requested age {age_target:.1f} kya, fixed ±10 kyr window; {len(selected_samples)} matching samples. No samples outside this window are substituted.",
+        "Taxa were ranked with a descriptive score: 0.6 × normalized mean abundance + 0.2 × normalized presence count + 0.2 × normalized predicted-link degree. Mean abundance includes zeros across all selected samples.",
+        "This is a historical-community similarity shortlist, not a validated seeding requirement or evidence of viability, necessity, ecological cooperation or successful establishment.",
     ]
+    import hashlib
+    ranking_evidence=dict(core=core,age_target_kyr=age_target,age_window_kyr=10,
+        selected_samples=selected_samples,sample_count=len(selected_samples),
+        observed_age_min_kyr=None if selected.empty else float(selected.age_kyr.min()),
+        observed_age_max_kyr=None if selected.empty else float(selected.age_kyr.max()),
+        requested_count=requested_count,returned_count=len(top_taxa),
+        ranking_rule=answer_lines[1],limitation=answer_lines[2],
+        top_taxa=json.loads(top_taxa.head(12).to_json(orient='records')),
+        source_files=['deep_knowledge_discovery/tables/sample_taxon_abundance_long.tsv',
+                      primary_threshold_label()+'/tables/ngraph_sample_qc.tsv','deep_knowledge_discovery/link_prediction_top_candidates.tsv'])
+    card_id='sample-ranking:'+hashlib.sha256(json.dumps(ranking_evidence,sort_keys=True).encode()).hexdigest()[:24]
+    query_card=dict(card_id=card_id,card_type='sample_taxa_ranking',entity_id=core,
+        title=f'Historical taxa ranking: {core}, {age_target:g} ±10 kyr',
+        summary=' '.join(answer_lines),evidence=json.dumps(ranking_evidence))
     return {
         "query_type": "seeding",
+        "query_evidence_cards": [query_card],
+        "selection_evidence": ranking_evidence,
+        "table_evidence": dict(intent='Historical taxa ranking',rows=json.loads(top_taxa.to_json(orient='records')),
+            total_count=len(ranked),returned_count=len(top_taxa),truncated=len(top_taxa)<len(ranked),
+            core=core,age_target_kyr=age_target,selected_samples=selected_samples),
         "query": query,
         "core": core,
         "age_target": age_target,
@@ -378,7 +403,8 @@ def render_answer(result: dict) -> str:
 
 def choose_query_type(query: str) -> str:
     q = query.lower()
-    if "seed" in q or "top 100 taxa" in q or "similar to core" in q or "what taxa would i need" in q:
+    from ngraph_functional_query import sample_taxa_question
+    if sample_taxa_question(query):
         return "seeding"
     if "functional capabilities" in q or "what are the top functional" in q or "how might they work" in q:
         return "functional"
@@ -425,7 +451,7 @@ def run_query(
         }
     scope=data.get('analysis_scope') or dict(module_system='vgae')
     base['scope']=scope
-    prior=data.get('_functional_context') or {}
+    prior={} if qtype=='seeding' else data.get('_functional_context') or {}
     base['context']=dict(schema='functional-query-1',scope=scope,entities=prior.get('entities') or dict(modules=[],functions=[],taxa=[]),module_refs=prior.get('module_refs',[]),core=base.get('core',''),intent=qtype)
     return augment_result(query, base, data, top_k=10, llm_provider=llm_provider)
 

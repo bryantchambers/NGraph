@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "port": 10291,
+  "model": "gemini-3.5-flash-lite",
+  "unit_tests": 53,
+  "browser_checks": 6,
+  "browser_report": "logs/synthesis_repair_20261106/browser/console_acceptance.json",
+  "climate_analysis": "unavailable; source/limitation synthesis only",
+  "modules_rebuilt": false
+}

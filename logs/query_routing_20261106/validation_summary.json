@@ -1,0 +1,32 @@
+{
+  "status": "passed",
+  "port": 10291,
+  "unit_tests": 60,
+  "browser_report": "logs/query_routing_20261106/browser/acceptance.json",
+  "scenarios": {
+    "followup": {
+      "query_type": "seeding",
+      "llm_status": "evidence_checked",
+      "llm_finish_reason": "STOP",
+      "llm_attempts": 1,
+      "core": "GeoB25202_R1",
+      "age_target": 150,
+      "selected_samples": [
+        "LV7008886709"
+      ],
+      "returned_taxa": 100
+    },
+    "fresh": {
+      "query_type": "seeding",
+      "llm_status": "evidence_checked",
+      "llm_finish_reason": "STOP",
+      "llm_attempts": 1,
+      "core": "GeoB25202_R1",
+      "age_target": 150,
+      "selected_samples": [
+        "LV7008886709"
+      ],
+      "returned_taxa": 100
+    }
+  }
+}

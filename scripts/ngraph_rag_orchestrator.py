@@ -27,11 +27,11 @@ def validate_interpretation(sentence):
     # Remove the explicitly contrasted negative tail, not the positive
     # premise: "cooperate rather than compete" must still be rejected.
     sentence=re.sub(r'\brather than\b.*$','',sentence,flags=re.I)
-    negative=re.search(r'no evidence|does not(?! only\b)|do not(?! only\b)|cannot|doesn.t|not (?:measured|establish|proven|confirmed|a )|\bunavailable\b|\bunproven\b|without evidence',sentence,re.I)
+    negative=re.search(r'no (?:evidence|data|information)|does not(?! only\b)|do not(?! only\b)|cannot|doesn.t|not (?:measured|establish|proven|confirmed|a )|\bunavailable\b|\bunproven\b|\bnot (?:been )?computed\b|without evidence',sentence,re.I)
     if negative:
-        if re.search(r'work together|in concert|cooperat|synerg|caus|driv(?:e|es|ing)|critical for',sentence[:negative.start()],re.I):raise ValueError('Unsupported positive premise before a caution')
+        if re.search(r'work together|in concert|cooperat|synerg|\bcaus\w*|driv(?:e|es|ing)|critical for',sentence[:negative.start()],re.I):raise ValueError('Unsupported positive premise before a caution')
         return
-    if re.search(r'work together|in concert|cooperat|synerg|caus|driv(?:e|es|ing)|critical for|climate transition|glacial|interglacial|carbon cycling|metabolic activity|statistically significant|high.confidence|significantly enriched',sentence,re.I):
+    if re.search(r'work together|in concert|cooperat|synerg|\bcaus\w*|driv(?:e|es|ing)|critical for|climate transition|glacial|interglacial|carbon cycling|metabolic activity|statistically significant|high.confidence|significantly enriched',sentence,re.I):
         raise ValueError('Unsupported ecological or statistical interpretation')
     if re.search(r'\bprobability\b|\bconfidence\b',sentence,re.I) and re.search(r'\d',sentence):
         raise ValueError('Model score is not a biological confidence estimate')
@@ -210,7 +210,8 @@ def build_retrieval_bundle(query: str, result: Dict[str, Any], data: Dict[str, A
     site_ids = _site_ids_for_result(result)
     link_entity_ids = _link_entity_ids(result)
 
-    cards_by_priority = []
+    query_cards=_as_frame(result.get('query_evidence_cards'))
+    cards_by_priority = [query_cards] if not query_cards.empty else []
     if semantic_card_ids:
         cards_by_priority.append(_card_matches(cards, card_ids=semantic_card_ids))
     if taxa:
@@ -235,7 +236,7 @@ def build_retrieval_bundle(query: str, result: Dict[str, Any], data: Dict[str, A
         retrieved_cards["retrieval_rank"] = pd.Series([None] * len(retrieved_cards), index=retrieved_cards.index, dtype="object")
 
     if not retrieved_cards.empty:
-        priority_map = {"predicted_link": 0, "module": 1, "taxon": 2, "site": 3, "sample": 4}
+        priority_map = {"sample_taxa_ranking": -1, "predicted_link": 0, "module": 1, "taxon": 2, "site": 3, "sample": 4}
         retrieved_cards["retrieval_priority"] = retrieved_cards["card_type"].map(priority_map).fillna(9)
         if "score" in retrieved_cards.columns:
             retrieved_cards = retrieved_cards.sort_values(["retrieval_priority", "score"], ascending=[True, False])
@@ -305,7 +306,7 @@ def validate_general_synthesis(response, cards, scope):
         text+='\n'+'\n'.join(values)
     encoded=__import__('json').dumps(cited,default=str)
     for entity in re.findall(r'\bM\d{1,5}\b|\bK\d{5}\b|S__[\w.\-]+',text):
-        if entity not in encoded:raise ValueError('Unsupported entity')
+        if entity.rstrip('.') not in encoded:raise ValueError('Unsupported entity')
     system=scope.get('module_system','vgae')
     if re.search(r'\b'+('DiffPool' if system=='vgae' else 'VGAE')+r'\b',text,re.I):
         raise ValueError('Module system outside selected scope')
@@ -355,11 +356,13 @@ def build_prompt(
         "Use only the supplied evidence cards and graph context.",
         "Cite card_id values inline when making factual claims.",
         "If evidence is weak or missing, say so explicitly.",
-        "Return JSON with keys: answer, evidence_ids, observations, predictions, uncertainty, followups.",
+        "Return JSON with exactly two keys: answer and evidence_ids. Include necessary uncertainty in the concise answer.",
         "",
         f"Question: {query}",
         f"Query type: {result.get('query_type', 'general')}",
     ]
+    if result.get('query_type')=='seeding':
+        lines.append('Explain the historical sample-based ranking, not a seeding prescription. State the selected sample count, observed age range and returned taxon count from sample_taxa_ranking evidence. Mention that the full ranked table is in the evidence panel. With one sample, state that temporal replication is unavailable. Do not infer necessity or viability.')
     if result.get("answer_lines"):
         lines.extend(["", "Deterministic local answer draft:"])
         for line in result["answer_lines"]:
@@ -390,7 +393,7 @@ def build_prompt(
     lines.extend([
         "",
         "Response rule:",
-        "Return a concise synthesis, list the strongest evidence IDs, and separate observations from predictions.",
+        "Return at most 150 words in answer, at most four distinct evidence IDs. Never repeat an evidence ID. Separate observations from predictions.",
     ])
     return "\n".join(lines)
 
@@ -402,7 +405,7 @@ def build_system_instruction() -> str:
             "Answer only from the retrieved evidence cards and graph context.",
             "Do not invent taxa, modules, ages, or functions.",
             "Prefer concise answers with explicit uncertainty.",
-            "Return valid JSON with keys: answer, evidence_ids, observations, predictions, uncertainty, followups.",
+            "Return valid JSON with exactly two keys: answer and evidence_ids. Include necessary uncertainty in the concise answer.",
             "Keep evidence_ids as an array of card_id strings.",
             "Separate observed facts from inferred hypotheses.",
         ]
@@ -433,7 +436,7 @@ def augment_result(
         if config:
             ids=[str(c['card_id']) for c in dataframe_records(bundle['retrieved_cards'],limit=12)]
             items=dict(type='STRING',enum=ids) if ids else dict(type='STRING')
-            schema=dict(type='OBJECT',required=['answer','evidence_ids'],properties=dict(answer=dict(type='STRING'),evidence_ids=dict(type='ARRAY',items=items),**{k:dict(type='ARRAY',items=dict(type='STRING')) for k in ['observations','predictions','followups']},uncertainty=dict(type='STRING')))
+            schema=dict(type='OBJECT',required=['answer','evidence_ids'],properties=dict(answer=dict(type='STRING'),evidence_ids=dict(type='ARRAY',maxItems=min(4,len(ids)) if ids else 4,items=items)))
             config=replace(config,response_schema=schema)
         llm_result = call_gemini(bundle["prompt"], system_instruction=build_system_instruction(),config=config)
     llm_status = llm_result.get("status", "disabled")
@@ -513,6 +516,14 @@ def augment_functional_result(result, llm_provider=None):
     enriched['llm_provider']=provider
     enriched['retrieval_bundle']=functional_json({'schema':'functional-evidence-1','scope':result.get('scope'), 'retrieved_cards':cards,'graph_results':result.get('graph_results',[]),'table_evidence':result.get('table_evidence'), 'entities':result.get('entities')})
     enriched['llm_answer']=''
+    if provider in {'gemini','google'} and result.get('query_type')=='climate_context' and cards:
+        # Explain the verified limitation without inventing missing analyses.
+        climate_cards=[dict(c,entity_id=c.get('entity_id','metadata:mis'),
+                            evidence=json.dumps(c.get('evidence',{}),default=str)) for c in cards]
+        local=dict(result,semantic_hits=climate_cards)
+        synthesized=augment_result(result['query'],local,{'cards':climate_cards},llm_provider=provider)
+        synthesized['retrieved_cards']=cards
+        return {key:dataframe_records(value) if isinstance(value,pd.DataFrame) else value for key,value in synthesized.items()}
     if provider not in {'gemini','google'} or result.get('resolution_status')!='resolved' or not cards:
         enriched['llm_status']=result.get('llm_status','rule_based');return enriched
     payload=json.dumps(enriched['retrieval_bundle'],default=str,allow_nan=False)
@@ -594,7 +605,7 @@ def validate_functional_claims(claims,cards):
         if claim['type']=='reference_support' and taxa and functions:
             if not any(c.get('proof',{}).get('witnesses') and any(n.get('node_id')=='taxon:'+taxa[0] and n.get('node_type')=='Taxon' for n in c['proof'].get('node_details',[])) and any(n.get('function_id')==functions[0] and n.get('node_type')=='FunctionalFeature' for n in c['proof'].get('node_details',[])) for c in supplied):raise ValueError('Individual support lacks the same-taxon function witness')
         for code in re.findall(r'\bM\d{1,5}\b|\bK\d{5}\b|S__[\w.\-]+',text):
-            if code not in encoded:raise ValueError('Unsupported entity')
+            if code.rstrip('.') not in encoded:raise ValueError('Unsupported entity')
         for label,number in re.findall(r'\b(q|p|z|odds ratio|effect|coverage)(?:[- ]value|[- ]score)?'+STAT_SEPARATOR+STAT_NUMBER,text,re.I):
             expected=values(supplied,fields[label.lower()])
             if not expected or not statistic_matches(number,expected):raise ValueError('Incorrect statistic')

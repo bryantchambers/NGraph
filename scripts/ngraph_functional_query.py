@@ -12,7 +12,7 @@ STOP={'which','what','who','are','is','the','a','an','of','for','in','and','have
 
 def words(text):
     tokens=set(re.findall(r'[a-z][a-z0-9]*',str(text).lower()))-STOP
-    return {token for token in tokens if not re.fullmatch(r'm\d+|k\d+|st\d+|geob\w+',token) and token not in {'enrichment','across','all','summary','summarize'}}
+    return {token for token in tokens if len(token)>1 and not re.fullmatch(r'm\d+|k\d+|st\d+|geob\w+',token) and token not in {'enrichment','across','all','summary','summarize'}}
 
 def clean_records(frame):
     return json.loads(frame.to_json(orient='records'))
@@ -22,6 +22,11 @@ def normalize_module_references(question):
 
 def functional_question(question):
     return bool(re.search(r'function|enrich|biosynthesis|\bmodules?\b|M\d{5}|K\d{5}|\bM[1-9]\d{0,2}\b|\bKO\b|\bkey findings\b|\bmain results\b|\boverview of (?:the |this )?(?:dataset|graph)\b',question,re.I)) or climate_question(question)
+
+def sample_taxa_question(question):
+    """A new sample-ranking request takes precedence over contextual follow-ups."""
+    return not functional_question(question) and bool(re.search(
+        r'\bseed(?:ing)?\b|\btop\s+\d+\s+(?:taxa|species)\b|\bsimilar to core\b|what taxa would i need',question,re.I))
 
 class FunctionalQuery:
     def __init__(self, app):
@@ -126,6 +131,7 @@ class FunctionalQuery:
     def execute(self,question,context=None,requested_scope=None):
         context=context or {};requested_scope=requested_scope or {}
         question=normalize_module_references(question)
+        if sample_taxa_question(question):return None
         overview_requested=bool(re.search(r'\bkey findings\b|\bmain results\b|\boverview of (?:the |this )?(?:dataset|graph)\b',question,re.I))
         relevant=functional_question(question)
         if not relevant and context and re.search(r'\b(that|those|their|it|them|these)\b|central|depth|age|core|\b(?:what|how) about\b',question,re.I):relevant=True

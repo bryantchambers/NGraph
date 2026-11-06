@@ -37,8 +37,8 @@ class ScopeTests(unittest.TestCase):
  def test_climate_conversation_does_not_invent_modules(self):
   r=self.engine.execute('What taxa work together to transition from glacial to interglacial periods?');self.assertEqual(r['query_type'],'climate_context');self.assertEqual(r['llm_status'],'analysis_unavailable');self.assertFalse(r['entities']['modules'])
   follow=self.engine.execute('functional enrichments in module 24',r['context']);self.assertEqual(follow['resolution_status'],'unannotated')
- def test_unavailable_analysis_does_not_call_gemini(self):
-  for q in ['functions in M24','How does MIS link with functional enrichment?']:
+ def test_unannotated_module_does_not_call_gemini(self):
+  for q in ['functions in M24']:
    with patch('ngraph_rag_orchestrator.call_gemini') as provider:
     r=augment_functional_result(self.engine.execute(q),'gemini');provider.assert_not_called();self.assertFalse(r['llm_answer'])
  def test_real_function_path_does_not_support_climate_claim(self):

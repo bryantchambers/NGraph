@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "base": "http://127.0.0.1:10291",
+  "checks": [
+    "actual Gemini module turn establishes conversation context",
+    "followup exact user question displays cited Gemini prose and 100 ranked evidence rows",
+    "fresh exact user question displays cited Gemini prose and 100 ranked evidence rows"
+  ],
+  "errors": []
+}
