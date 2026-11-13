@@ -114,6 +114,7 @@ fs.mkdirSync(output, {recursive:true});
   await check('local query and selected-answer evidence',async()=>{
     await go('/query','#query-input');
     await page.click('#query-clear');
+    await page.select('#query-provider','local');
     await page.type('#query-input','Which taxa are associated with ST8?');
     await page.click('#query-submit');
     await page.waitForSelector('#conversation button[data-turn="0"]');

@@ -1,0 +1,9 @@
+{
+  "status": "rejected_synthesis_observed",
+  "route": "general evidence/provenance",
+  "provider_finish_reason": "STOP",
+  "llm_status": "validation_failed",
+  "subsequent_same_question": "evidence_checked",
+  "subsequent_response_file": "general_probe.json",
+  "limitation": "Provider output varies. A later passing check does not establish universal synthesis reliability; rejected outputs must retain local evidence."
+}

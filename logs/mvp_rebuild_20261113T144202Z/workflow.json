@@ -1,0 +1,139 @@
+{
+  "schema": "mvp-rebuild-1",
+  "branch": "mvp_rebuild_20261113T144202Z",
+  "status": "completed_promotion_held",
+  "started_utc": "2026-11-13T14:42:03.480530+00:00",
+  "seed": 42,
+  "settings": {
+    "NG_BRANCH": "mvp_rebuild_20261113T144202Z",
+    "NG_LOG_SCOPE": "mvp_rebuild_20261113T144202Z",
+    "NG_ABUNDANCE_MODE": "hybrid_aggregated_tad_then_read",
+    "NG_PREVALENCE_THRESHOLDS": "10",
+    "NG_PRIMARY_THRESHOLD": "10",
+    "NG_PRIMARY_THRESHOLD_LABEL": "prev_10",
+    "NG_SITE_GRAPH_METHODS": "pearson",
+    "NG_LOCAL_MIN_POSITIVE_SAMPLES": "5",
+    "NG_LOCAL_PREVALENCE_FRACTION": "0",
+    "NG_MODULE_K_MIN": "2",
+    "NG_MODULE_K_MAX": "8",
+    "NG_TRAIN_EPOCHS": "120",
+    "NG_FUNCTIONAL_REFERENCE_SNAPSHOT": "functional_20261008",
+    "NG_FUNCTIONAL_SNAPSHOT": "catalog_unweighted_mvp_rebuild_20261113T144202Z",
+    "NG_FUNCTIONAL_BOOTSTRAPS": "200",
+    "NG_LLM_PROVIDER": "local"
+  },
+  "git_head": "33ca7b158a1985a404a9b02df2c73bad0d6fe9dd",
+  "stages": [
+    {
+      "name": "discovery_and_proxy_KG",
+      "command": [
+        "bash",
+        "run_mvp.sh"
+      ],
+      "started_utc": "2026-11-13T14:42:03.627820+00:00",
+      "status": "completed",
+      "returncode": 0,
+      "finished_utc": "2026-11-13T14:51:01.587556+00:00"
+    },
+    {
+      "name": "functional_enrichment_and_joint_evidence",
+      "command": [
+        "bash",
+        "run_functional.sh"
+      ],
+      "started_utc": "2026-11-13T14:51:01.594961+00:00",
+      "status": "completed",
+      "returncode": 0,
+      "finished_utc": "2026-11-13T14:56:08.537788+00:00"
+    },
+    {
+      "name": "final_KG_integrity",
+      "command": [
+        "/maps/projects/caeg/people/gfx654/miniforge3/envs/ngraph/bin/python",
+        "scripts/ngraph_validate_kg_substrate.py",
+        "--branch",
+        "mvp_rebuild_20261113T144202Z"
+      ],
+      "started_utc": "2026-11-13T14:56:08.544206+00:00",
+      "status": "completed",
+      "returncode": 0,
+      "finished_utc": "2026-11-13T14:56:57.861007+00:00"
+    },
+    {
+      "name": "final_MVP_and_demonstrations",
+      "command": [
+        "/maps/projects/caeg/people/gfx654/miniforge3/envs/ngraph/bin/python",
+        "scripts/ngraph_validate_mvp.py",
+        "--branch",
+        "mvp_rebuild_20261113T144202Z"
+      ],
+      "started_utc": "2026-11-13T14:56:57.867983+00:00",
+      "status": "completed",
+      "returncode": 0,
+      "finished_utc": "2026-11-13T14:57:24.435171+00:00"
+    },
+    {
+      "name": "final_run_manifest",
+      "command": [
+        "/maps/projects/caeg/people/gfx654/miniforge3/envs/ngraph/bin/python",
+        "scripts/ngraph_run_manifest.py",
+        "--branch",
+        "mvp_rebuild_20261113T144202Z",
+        "--status",
+        "completed"
+      ],
+      "started_utc": "2026-11-13T14:57:24.442086+00:00",
+      "status": "completed",
+      "returncode": 0,
+      "finished_utc": "2026-11-13T14:57:24.629919+00:00"
+    }
+  ],
+  "source_sha256": {
+    "run_mvp.sh": "abecf980d37dcf954055775af53160510b8d562af709bc9a7b0a0491b90b4a12",
+    "run_pipeline.sh": "010f86701be4ecff84823ca4dc38af1a752d21760cb8c3b3ee21fbee7ec3987f",
+    "run_functional.sh": "48cedde7b51e0a560631ce62e3e4f075ba3de7339b9592d27f138412d162fe1b",
+    "logs/mvp_rebuild_20261113T144202Z/rebuild.py": "8df72dfd93c114ada6e86d46790137eca5b6b289677b974afe448434b51a762d"
+  },
+  "reference_manifest_sha256": "d43b621fedb7a51459e83e76bb3c034bcfc61c20595e1d33035280945020955f",
+  "served_baseline": {
+    "analysis_label": "Permissive mixed-abundance sensitivity analysis: TAD where positive, read fallback otherwise",
+    "branch": "mvp_functional_20261008",
+    "cards": 2602,
+    "discovery_dir": "/maps/projects/caeg/people/gfx654/Projects/NGraph/results/ngraph/mvp_functional_20261008/deep_knowledge_discovery",
+    "gemini_key_present": true,
+    "gemini_model": "gemini-3.5-flash-lite",
+    "kg_dir": "/maps/projects/caeg/people/gfx654/Projects/NGraph/results/ngraph/mvp_functional_20261008/knowledge_graph/snapshots/functional-587688fa942779a82370eb1f",
+    "kg_edges": 367509,
+    "kg_measurements": 34598,
+    "kg_nodes": 38253,
+    "link_predictions": 200,
+    "llm_provider_default": "gemini",
+    "project_root": "/maps/projects/caeg/people/gfx654/Projects/NGraph",
+    "query_results": 1,
+    "service": "Constellations",
+    "status": "ok"
+  },
+  "finished_utc": "2026-11-13T14:57:24.637825+00:00",
+  "analysis_status": "completed",
+  "promotion_status": "held_pending_Query_acceptance",
+  "updated_utc": "2026-11-13T15:05:32.517679+00:00",
+  "comparison_report": "results/ngraph/mvp_rebuild_20261113T144202Z/reports/REBUILD_COMPARISON.json",
+  "candidate_service": {
+    "port": 10293,
+    "host": "127.0.0.1"
+  },
+  "public_service": {
+    "port": 10291,
+    "branch": "mvp_functional_20261008"
+  },
+  "browser_checks_passed": 19,
+  "query_acceptance": {
+    "status": "partial",
+    "module_synthesis": "validated",
+    "general_synthesis": "successful_and_rejected_outputs_observed",
+    "climate_synthesis": "conservative_wording_false_rejection_captured",
+    "sample_console": "provider_503_before_exact_question",
+    "local_sample_ranking": "passed_100_taxa_with_context_reset"
+  },
+  "source_patch": "functional_runner.patch"
+}

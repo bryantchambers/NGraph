@@ -1,0 +1,105 @@
+{
+  "base": "http://127.0.0.1:10293",
+  "checked_at": "2026-11-13T15:03:27.052Z",
+  "checks": [
+    {
+      "name": "overview navigation and refresh",
+      "status": "passed",
+      "evidence": {
+        "branch": "mvp_rebuild_20261113T144202Z",
+        "counts": {
+          "cores": 4,
+          "data_sources": 12,
+          "embeddings": 1721,
+          "evidence_cards": 2602,
+          "kg_edges": 367509,
+          "kg_measurements": 34598,
+          "kg_nodes": 38253,
+          "link_hypotheses": 200,
+          "modules": 6,
+          "ontology_terms": 10,
+          "physical_sites": 3,
+          "samples": 214,
+          "taxa_in_modules": 1717
+        }
+      }
+    },
+    {
+      "name": "graph search, node click, zoom and bounded neighborhood",
+      "status": "passed",
+      "evidence": {
+        "clicked": "LV3003047025",
+        "nodes": 40
+      }
+    },
+    {
+      "name": "metapath taxon to SST",
+      "status": "passed",
+      "evidence": {
+        "paths": 214,
+        "status": "exact",
+        "detail": "1. S__GCA_011055585.1\nTaxon · taxon:S__GCA_011055585.1\n2. LV3003046937\nSample · LV3003046937\n3. sst @ LV3003046937\nProxyMeasurement · measurement:sample_metadata:LV3003046937:sst\n\nValue: 7.40669227965178 degree_Celsius · direct_sample\n\nUnit status\ninferred_temperature\nUnit evidence\nSST temperature; exact instrument/calibration units require source confirmation\nMatching\ndirect_sample\nDataset\nmetadata_v5\nSource file\ndata/metadata/metadata_v5.tsv\nDerived observations\nobservation:mvp_rebuild_20261113T144202Z:4949\n4. sst\nProxyVariable · variable:sst"
+      }
+    },
+    {
+      "name": "metapath cores through module",
+      "status": "passed",
+      "evidence": {
+        "paths": 10000,
+        "status": "lower_bound",
+        "detail": "1. ST8\nSite · site:ST8\n2. LV3003046936\nSample · LV3003046936\n3. S__3300000116_5\nTaxon · taxon:S__3300000116_5\n4. DiffPool M18\nModule · module:mvp_rebuild_20261113T144202Z:prev_10:pearson:diffpool:M18\n5. S__3300005056_12\nTaxon · taxon:S__3300005056_12\n6. LV3003061517\nSample · LV3003061517\n7. ST13\nSite · site:ST13"
+      }
+    },
+    {
+      "name": "flagged proxy exposes units, bracket width and provenance",
+      "status": "passed",
+      "evidence": "sst_mgca_jonkers_2013 @ LV3003047127\nID\nmeasurement:sst_proxy:LV3003047127:sst_mgca_jonkers_2013\nType\nProxyMeasurement\nCore\nST8\nVariable\nsst_mgca_jonkers_2013\nValue\n3.74985445424828\nUnit\ndegree_Celsius\nSource\ndata/kg_feedstock/combined_sst_proxies_separate_columns.csv\nLarge interpolation gap: this value requires scientific review.\nUnit status\ninferred_temperature\nUnit evidence\nSST temperature; exact instrument/calibration units require source confirmation\nMatching\nlinear_depth_interpolation\nInterpolation bracket (cm)\n60\nDataset\nsst_proxies\nSource file\ndata/kg_feedstock/combined_sst_proxies_separate_columns.csv\nSource records\nproxy_source:sst_proxies:222:sst_mgca_jonkers_2013,proxy_source:sst_proxies:225:sst_mgca_jonkers_2013\nDerived observations\nobservation:mvp_rebuild_20261113T144202Z:5689\n\n4 relations returned · 1 measurements returned"
+    },
+    {
+      "name": "supergraph node click",
+      "status": "passed",
+      "evidence": "ST8"
+    },
+    {
+      "name": "module selection and member pagination",
+      "status": "passed",
+      "evidence": "Page 2 of 8 · 153 members"
+    },
+    {
+      "name": "embedding and visible figure loading",
+      "status": "passed",
+      "evidence": "800 plotted records. This projection summarizes an exploratory learned space."
+    },
+    {
+      "name": "local query and selected-answer evidence",
+      "status": "passed",
+      "evidence": {
+        "cards": 10
+      }
+    },
+    {
+      "name": "report preview and download endpoint",
+      "status": "passed",
+      "evidence": {
+        "status": 200,
+        "bytes": 49127,
+        "name": "combined_foraminifera_geochem.tsv"
+      }
+    },
+    {
+      "name": "evidence-card search",
+      "status": "passed",
+      "evidence": 36
+    },
+    {
+      "name": "mobile navigation and page width",
+      "status": "passed",
+      "evidence": {
+        "viewport": 390,
+        "content": 390
+      }
+    }
+  ],
+  "errors": [],
+  "status": "passed"
+}

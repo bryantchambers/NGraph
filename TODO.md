@@ -103,3 +103,12 @@ Implementation checkpoint (2026-10-12): active joint bundle `functional-587688fa
 - [ ] Preserve independent-core/module-stability, biological review and the remaining original MVP checklist.
 
 See the dated repair checkpoint in WORKPLAN.md and the functional RAG plan. Evidence and browser replays are stored under `logs/query_semantics_20261019/`.
+
+### Coordinated rebuild checkpoint — 2026-11-13
+
+- [x] Rebuild discovery, broad-catalog enrichment, environmental KG evidence and joint retrieval together in `mvp_rebuild_20261113T144202Z`; validate and compare with the baseline. Six modules/four qualified associations reproduce, with zero dangling references and unchanged proxy coverage.
+- [x] Pass nineteen local browser checks and the R1/150-kya local ranking (100 taxa, fresh sample-query context).
+- [ ] Resolve conservative-climate wording false rejections and verify Gemini provider availability; complete real-provider Query/browser acceptance before promotion. Recorded failures must remain visible alongside successes.
+- [ ] Promote the candidate only after acceptance. 10291 remains on `mvp_functional_20261008`; 10293 is the loopback candidate. Existing scientific/proxy/holdout priorities remain open; no retraining is required to finish Query acceptance.
+
+See [the completed rebuild and promotion checkpoint](LEARNING_AND_NOTES/REBUILD_2026-11-13.md).

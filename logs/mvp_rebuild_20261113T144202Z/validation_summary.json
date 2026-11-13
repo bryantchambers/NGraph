@@ -1,0 +1,40 @@
+{
+  "status": "rebuilt_and_data_validated_promotion_held",
+  "branch": "mvp_rebuild_20261113T144202Z",
+  "retained_taxa": 1797,
+  "analysis_samples": 214,
+  "assigned_taxa": 1717,
+  "unassigned_taxa": 80,
+  "module_sizes": [
+    599,
+    346,
+    279,
+    206,
+    153,
+    134
+  ],
+  "baseline_membership_ARI": 1.0,
+  "tests": 954,
+  "permutations": 381600,
+  "qualified_associations": 4,
+  "baseline_max_q_difference": 0,
+  "baseline_max_Z_difference": 0,
+  "kg_nodes": 38253,
+  "kg_edges": 367509,
+  "dangling_references": 0,
+  "matched_proxy_values": 24957,
+  "large_gap_values": 625,
+  "proxy_extrapolations": 0,
+  "browser_checks_passed": 19,
+  "unit_checks_passed": 8,
+  "local_R1_ranking": "passed",
+  "promotion": "held_pending_Query_acceptance",
+  "query_acceptance": {
+    "status": "partial",
+    "module_synthesis": "validated",
+    "general_synthesis": "successful_and_rejected_outputs_observed",
+    "climate_synthesis": "conservative_wording_false_rejection_captured",
+    "sample_console": "provider_503_before_exact_question",
+    "local_sample_ranking": "passed_100_taxa_with_context_reset"
+  }
+}

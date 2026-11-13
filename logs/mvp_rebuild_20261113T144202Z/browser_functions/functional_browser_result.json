@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "checks": [
+    "Z display",
+    "snapshot",
+    "pagination",
+    "four qualified results",
+    "carrier provenance",
+    "indexed KO inventory",
+    "separate depth/age profiles"
+  ],
+  "errors": []
+}

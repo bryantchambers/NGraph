@@ -1,0 +1,414 @@
+{
+  "status": "comparison_completed",
+  "baseline": {
+    "branch": "mvp_functional_20261008",
+    "kg_snapshot_id": "functional-587688fa942779a82370eb1f",
+    "functional_snapshot": "catalog_unweighted_20261008",
+    "assigned_taxa": 1717,
+    "inventory_taxa": 1797,
+    "assignment_status": {
+      "exploratory_embedding_kmeans": 1717,
+      "unassigned_no_taxon_association_edges": 43,
+      "unassigned_insufficient_local_support": 37
+    },
+    "module_sizes": {
+      "M4": 599,
+      "M6": 346,
+      "M2": 279,
+      "M3": 206,
+      "M5": 153,
+      "M1": 134
+    },
+    "qualified_associations": 4,
+    "tested_associations": 954,
+    "proxy_coverage_rows": 42420,
+    "kg_validation": {
+      "kg_snapshot_id": "functional-587688fa942779a82370eb1f",
+      "status": "passed",
+      "branch": "mvp_functional_20261008",
+      "schema": "mvp-3",
+      "dangling_references": 0,
+      "functional_projected_nodes": 616,
+      "functional_associations": 4,
+      "nodes": 38253,
+      "edges": 367509,
+      "source_cells": 748087,
+      "matched_proxy_values": 24957,
+      "geoB_same_depth_library_comparisons": 2929,
+      "geoB_same_depth_values_identical": true,
+      "source_to_derived_values_reconstructed": true,
+      "age_only_matching": false,
+      "interpolation_extrapolations": 0,
+      "depth_tolerance_cm": 0.5,
+      "large_gap_values": 625,
+      "large_gap_rule": "Bracket width > 3 times within-core/variable median source spacing; review flag, not exclusion",
+      "unit_status_counts": {
+        "unresolved": 14747,
+        "header_declared": 9372,
+        "inferred_temperature": 838
+      },
+      "units_limitation": "Unspecified native units are explicit; inferred units are not promoted to confirmed",
+      "coverage_by_dataset": {
+        "foraminifera_geochem": {
+          "requested": 13938,
+          "matched": 9016,
+          "unmatched": 4922
+        },
+        "geob25202_proxies": {
+          "requested": 4848,
+          "matched": 1584,
+          "unmatched": 3264
+        },
+        "sst_proxies": {
+          "requested": 1818,
+          "matched": 838,
+          "unmatched": 980
+        },
+        "xrf_geochemistry": {
+          "requested": 21816,
+          "matched": 13519,
+          "unmatched": 8297
+        }
+      },
+      "native_source_coverage": {
+        "foraminifera_geochem": {
+          "source_cells": 5451,
+          "finite_cells": 3615,
+          "source_rows": 237
+        },
+        "geob25202_proxies": {
+          "source_cells": 904,
+          "finite_cells": 758,
+          "source_rows": 113
+        },
+        "sst_proxies": {
+          "source_cells": 708,
+          "finite_cells": 318,
+          "source_rows": 236
+        },
+        "xrf_geochemistry": {
+          "source_cells": 741024,
+          "finite_cells": 673596,
+          "source_rows": 20584
+        }
+      },
+      "matching_status_counts": {
+        "no_finite_proxy_values": 13162,
+        "within_depth_tolerance": 10163,
+        "exact_depth": 9081,
+        "linear_depth_interpolation": 5713,
+        "missing_sample_depth": 4060,
+        "outside_proxy_range": 237,
+        "discrete_variable_no_interpolation": 4
+      },
+      "curated_xrf_used": true
+    },
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "2.3.3",
+      "torch": "2.11.0",
+      "torch-geometric": "2.6.1",
+      "scikit-learn": "1.9.0"
+    },
+    "source_git_head": "d8a91efabf5f74cef73f513f602e06bb837d1c5a"
+  },
+  "candidate": {
+    "branch": "mvp_rebuild_20261113T144202Z",
+    "kg_snapshot_id": "functional-bf495f9835e99ef1fc9caaac",
+    "functional_snapshot": "catalog_unweighted_mvp_rebuild_20261113T144202Z",
+    "assigned_taxa": 1717,
+    "inventory_taxa": 1797,
+    "assignment_status": {
+      "exploratory_embedding_kmeans": 1717,
+      "unassigned_no_taxon_association_edges": 43,
+      "unassigned_insufficient_local_support": 37
+    },
+    "module_sizes": {
+      "M4": 599,
+      "M6": 346,
+      "M2": 279,
+      "M3": 206,
+      "M5": 153,
+      "M1": 134
+    },
+    "qualified_associations": 4,
+    "tested_associations": 954,
+    "proxy_coverage_rows": 42420,
+    "kg_validation": {
+      "kg_snapshot_id": "functional-bf495f9835e99ef1fc9caaac",
+      "status": "passed",
+      "branch": "mvp_rebuild_20261113T144202Z",
+      "schema": "mvp-3",
+      "dangling_references": 0,
+      "functional_projected_nodes": 616,
+      "functional_associations": 4,
+      "nodes": 38253,
+      "edges": 367509,
+      "source_cells": 748087,
+      "matched_proxy_values": 24957,
+      "geoB_same_depth_library_comparisons": 2929,
+      "geoB_same_depth_values_identical": true,
+      "source_to_derived_values_reconstructed": true,
+      "age_only_matching": false,
+      "interpolation_extrapolations": 0,
+      "depth_tolerance_cm": 0.5,
+      "large_gap_values": 625,
+      "large_gap_rule": "Bracket width > 3 times within-core/variable median source spacing; review flag, not exclusion",
+      "unit_status_counts": {
+        "unresolved": 14747,
+        "header_declared": 9372,
+        "inferred_temperature": 838
+      },
+      "units_limitation": "Unspecified native units are explicit; inferred units are not promoted to confirmed",
+      "coverage_by_dataset": {
+        "foraminifera_geochem": {
+          "requested": 13938,
+          "matched": 9016,
+          "unmatched": 4922
+        },
+        "geob25202_proxies": {
+          "requested": 4848,
+          "matched": 1584,
+          "unmatched": 3264
+        },
+        "sst_proxies": {
+          "requested": 1818,
+          "matched": 838,
+          "unmatched": 980
+        },
+        "xrf_geochemistry": {
+          "requested": 21816,
+          "matched": 13519,
+          "unmatched": 8297
+        }
+      },
+      "native_source_coverage": {
+        "foraminifera_geochem": {
+          "source_cells": 5451,
+          "finite_cells": 3615,
+          "source_rows": 237
+        },
+        "geob25202_proxies": {
+          "source_cells": 904,
+          "finite_cells": 758,
+          "source_rows": 113
+        },
+        "sst_proxies": {
+          "source_cells": 708,
+          "finite_cells": 318,
+          "source_rows": 236
+        },
+        "xrf_geochemistry": {
+          "source_cells": 741024,
+          "finite_cells": 673596,
+          "source_rows": 20584
+        }
+      },
+      "matching_status_counts": {
+        "no_finite_proxy_values": 13162,
+        "within_depth_tolerance": 10163,
+        "exact_depth": 9081,
+        "linear_depth_interpolation": 5713,
+        "missing_sample_depth": 4060,
+        "outside_proxy_range": 237,
+        "discrete_variable_no_interpolation": 4
+      },
+      "curated_xrf_used": true
+    },
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "2.3.3",
+      "torch": "2.11.0",
+      "torch-geometric": "2.6.1",
+      "scikit-learn": "1.9.0"
+    },
+    "source_git_head": "33ca7b158a1985a404a9b02df2c73bad0d6fe9dd"
+  },
+  "shared_assigned_taxa": 1717,
+  "module_membership_ARI": 1.0,
+  "candidate_to_baseline_label_overlap": {
+    "M1": "M1",
+    "M2": "M2",
+    "M3": "M3",
+    "M4": "M4",
+    "M5": "M5",
+    "M6": "M6"
+  },
+  "baseline_associations": [
+    {
+      "module_id": "M3",
+      "function_id": "M00169",
+      "q_value": 0.0024999934,
+      "permutation_z_score": 5.000396159,
+      "carrier_count": 77
+    },
+    {
+      "module_id": "M3",
+      "function_id": "M00091",
+      "q_value": 0.0037499902,
+      "permutation_z_score": 4.4369476529,
+      "carrier_count": 110
+    },
+    {
+      "module_id": "M4",
+      "function_id": "M00121",
+      "q_value": 0.0112499705,
+      "permutation_z_score": 4.0294485431,
+      "carrier_count": 202
+    },
+    {
+      "module_id": "M4",
+      "function_id": "M00053",
+      "q_value": 0.0371427598,
+      "permutation_z_score": 3.532597528,
+      "carrier_count": 219
+    }
+  ],
+  "candidate_associations": [
+    {
+      "module_id": "M3",
+      "matched_old_module": "M3",
+      "function_id": "M00169",
+      "q_value": 0.0024999934,
+      "permutation_z_score": 5.000396159,
+      "carrier_count": 77
+    },
+    {
+      "module_id": "M3",
+      "matched_old_module": "M3",
+      "function_id": "M00091",
+      "q_value": 0.0037499902,
+      "permutation_z_score": 4.4369476529,
+      "carrier_count": 110
+    },
+    {
+      "module_id": "M4",
+      "matched_old_module": "M4",
+      "function_id": "M00121",
+      "q_value": 0.0112499705,
+      "permutation_z_score": 4.0294485431,
+      "carrier_count": 202
+    },
+    {
+      "module_id": "M4",
+      "matched_old_module": "M4",
+      "function_id": "M00053",
+      "q_value": 0.0371427598,
+      "permutation_z_score": 3.532597528,
+      "carrier_count": 219
+    }
+  ],
+  "baseline_site_graphs": [
+    {
+      "threshold": 10,
+      "core": "ST8",
+      "method": "pearson_abs_threshold",
+      "method_suffix": "pearson",
+      "samples": 115,
+      "nodes": 1539,
+      "edges": 26882,
+      "density": 0.0227141567,
+      "components": 312,
+      "association_cutoff": 0.55,
+      "top_variable_taxa": 1539
+    },
+    {
+      "threshold": 10,
+      "core": "ST13",
+      "method": "pearson_abs_threshold",
+      "method_suffix": "pearson",
+      "samples": 48,
+      "nodes": 1377,
+      "edges": 20718,
+      "density": 0.021868825,
+      "components": 147,
+      "association_cutoff": 0.55,
+      "top_variable_taxa": 1377
+    },
+    {
+      "threshold": 10,
+      "core": "GeoB25202_R1",
+      "method": "pearson_abs_threshold",
+      "method_suffix": "pearson",
+      "samples": 26,
+      "nodes": 961,
+      "edges": 20781,
+      "density": 0.0450507284,
+      "components": 10,
+      "association_cutoff": 0.55,
+      "top_variable_taxa": 961
+    },
+    {
+      "threshold": 10,
+      "core": "GeoB25202_R2",
+      "method": "pearson_abs_threshold",
+      "method_suffix": "pearson",
+      "samples": 25,
+      "nodes": 948,
+      "edges": 16310,
+      "density": 0.0363350398,
+      "components": 4,
+      "association_cutoff": 0.55,
+      "top_variable_taxa": 948
+    }
+  ],
+  "candidate_site_graphs": [
+    {
+      "threshold": 10,
+      "core": "ST8",
+      "method": "pearson_abs_threshold",
+      "method_suffix": "pearson",
+      "samples": 115,
+      "nodes": 1539,
+      "edges": 26882,
+      "density": 0.0227141567,
+      "components": 312,
+      "association_cutoff": 0.55,
+      "top_variable_taxa": 1539
+    },
+    {
+      "threshold": 10,
+      "core": "ST13",
+      "method": "pearson_abs_threshold",
+      "method_suffix": "pearson",
+      "samples": 48,
+      "nodes": 1377,
+      "edges": 20718,
+      "density": 0.021868825,
+      "components": 147,
+      "association_cutoff": 0.55,
+      "top_variable_taxa": 1377
+    },
+    {
+      "threshold": 10,
+      "core": "GeoB25202_R1",
+      "method": "pearson_abs_threshold",
+      "method_suffix": "pearson",
+      "samples": 26,
+      "nodes": 961,
+      "edges": 20781,
+      "density": 0.0450507284,
+      "components": 10,
+      "association_cutoff": 0.55,
+      "top_variable_taxa": 961
+    },
+    {
+      "threshold": 10,
+      "core": "GeoB25202_R2",
+      "method": "pearson_abs_threshold",
+      "method_suffix": "pearson",
+      "samples": 25,
+      "nodes": 948,
+      "edges": 16310,
+      "density": 0.0363350398,
+      "components": 4,
+      "association_cutoff": 0.55,
+      "top_variable_taxa": 948
+    }
+  ],
+  "limitations": [
+    "Module labels are run-scoped; overlap matching is descriptive.",
+    "Fixed-embedding clustering and repeated pipeline agreement do not establish bootstrap stability or unseen-core generalization.",
+    "Unresolved proxy units/calibration and interpolation flags remain unapproved."
+  ]
+}

@@ -13,7 +13,7 @@ fs.mkdirSync(output,{recursive:true});
   await page.goto(base+'/modules?view=functions',{waitUntil:'networkidle0'});
   await page.waitForSelector('#functional-results button[data-function-index]');
   assert.match(await page.$eval('#functional-results',el=>el.innerText),/\bZ\b/);
-  assert.match(await page.$eval('#functional-status',el=>el.innerText),/catalog_unweighted_20261008/);
+  assert.match(await page.$eval('#functional-status',el=>el.innerText),new RegExp(process.env.NG_EXPECTED_FUNCTIONAL_SNAPSHOT || 'catalog_unweighted_20261008'));
   await page.click('#functional-next');await page.waitForNetworkIdle();
   assert.match(await page.$eval('#functional-page',el=>el.innerText),/41/);
   await page.select('#functional-qualified','true');await page.waitForNetworkIdle();
